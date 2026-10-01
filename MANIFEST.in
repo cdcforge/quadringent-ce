@@ -1,0 +1,23 @@
+include README.md LICENSE NOTICE THIRD_PARTY_NOTICES.md CHANGELOG.md CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md AGENTS.md
+include requirements*.txt .gitleaks.toml .gitignore
+recursive-include src *.py
+recursive-include scripts *.py *.sh
+recursive-include research *.py *.md
+recursive-include tests *.py *.json *.txt *.yaml
+recursive-include examples *
+graft chart
+recursive-include deploy *.tf *.md *.tpl.yaml *.tpl.sh *.json .terraform.lock.hcl
+prune deploy/terraform/*/*/.terraform
+graft docker
+graft docs
+graft infra-values
+graft java
+graft ui
+graft site
+graft .github
+prune java/target
+prune ui/node_modules
+prune ui/dist
+global-exclude __pycache__ *.py[cod] .DS_Store *.tsbuildinfo
+
+recursive-include licenses *

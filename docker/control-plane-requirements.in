@@ -1,0 +1,30 @@
+# Read-only S3 proof retrieval. No IBM i driver.
+boto3==1.43.84
+# Correctifs TLS proxy et lecture chunked : CVE-2026-97687 / CVE-2026-97689.
+urllib3==2.8.0
+# GCS : backend de stockage brut alternatif (storage_backend.py), requis par
+# le chargeur de destination pour lire les lots bruts publiés par la capture.
+google-cloud-storage==3.4.0
+
+# Chargeur de destination (scripts/quadringent_destination_loader.py) :
+# historique Snowpipe Streaming + MERGE miroir. snowflake-connector-python
+# exécute le MERGE ; snowpipe-streaming est le SDK haute performance de
+# l'historique (docs/decisions/2026-09-23-miroir-snowflake.md).
+snowflake-connector-python==4.7.5
+snowpipe-streaming==1.8.0
+
+# Control plane v2 (`/v2`) : API FastAPI + persistance Postgres.
+fastapi==0.141.1
+uvicorn==0.53.0
+pydantic==2.13.5
+sqlalchemy==2.0.54
+alembic==1.20.0
+psycopg[binary]==3.3.6
+cryptography==50.0.1
+
+# Serveur MCP in-process /mcp + client CLI (contrat §4, §9.2 tâche 18).
+mcp==2.2.0
+httpx==0.28.1
+
+# OIDC optionnel (tâche 10, §6.2) : vérification de l'id_token.
+PyJWT==2.14.0

@@ -1,0 +1,215 @@
+# quadringent — values pour l'environnement INT.
+#
+# Ce fichier et les policies IAM bornées de `infra-values/` doivent vivre dans
+# le dépôt d'infrastructure example-corp. Le code applicatif reste dans ce dépôt et part
+# dans l'image privée référencée ci-dessous.
+#
+# Modèle identique à Popsink : la chart est installée, les values sont versionnées
+# ici, le code ne l'est pas.
+
+image:
+  repository: ghcr.io/quadringent/quadringent
+  digest: "sha256:22089a7e7c78f026e396258da8b7dc0be3e6421a79066998c4e1df3a5e4d7190"
+  pullSecret: quadringent-registry  # imagePullSecret vers ghcr.io
+
+deployment:
+  environment: dev
+  productionPromotionAllowed: false
+
+# Identité déclarée du site example-corp INT — seule source de vérité pour QUADRINGENT_*.
+site:
+  id: example-corp
+  awsAccountId: "000000000000"
+  namespace: quadringent-demo
+  ibmiHost: "192.0.2.10"
+  ibmiUser: CDCUSER
+  sourceSchema: SALES
+  proofTable: SALE
+  journalName: DEMOJRN
+  rawBucket: example-corp-000000000000-int-example-corp-raw
+  rawPrefixRoot: as400/sales
+  checkpointTable: example-corp-int-example-corp-checkpoints
+  destinationDatabase: DEV_RAW
+  destinationSchema: AS400_RD
+  destinationId: snowflake-dev-rd
+  snowflakeAccount: EXAMPLE-EXAMPLE_CORP
+  snowflakeConnection: example-corp-dev
+  awsProfile: example-corp-dev
+  # Transitoire INT : les politiques IAM provisionnées n'autorisent que le
+  # document historique cdcforge-autonomous-latest.json. Repasser au défaut
+  # produit (quadringent-autonomous-latest.json) quand l'infra aura ajouté
+  # le nouveau nom aux politiques du site.
+  autonomousProofName: cdcforge-autonomous-latest.json
+  # Transitoire INT : les objets Snowflake provisionnés (rôle vérificateur,
+  # warehouse, tables raw/canonical/pipes) portent le préfixe CDC_FORGE.
+  # Repasser au défaut produit (QUADRINGENT) quand l'infra aura reprovisionné
+  # les objets sous le nouveau nom.
+  destinationPrefix: CDC_FORGE
+  fleetTables:
+    - ADDRS1
+    - CAL001
+    - COST1
+    - CUSTOM1
+    - ORDER
+    - EXPENS
+    - DATE01
+    - SALE
+    - PLACE01
+    - PLACES
+    - CNTR
+    - PRODUCT
+    - HOLIDAYS
+  keyedTables:
+    - ADDRS1
+    - CAL001
+    - CUSTOM1
+    - ORDER
+    - SALE
+  provisionedStages:
+    - SALE
+  proofKeyColumns:
+    - SDOM
+    - SCOD
+    - SSEQ
+    - SORD
+    - STYP
+    - SDISC
+    - SDATE
+  forbiddenFragments:
+    - OTHER_SCHEMA
+    - POPSINK
+
+serviceAccount:
+  create: false
+  name: as400-snowflake-capture
+
+# Placement : hors du nœud qui porte le connecteur Popsink de référence.
+nodeSelector:
+  workload: popsink
+tolerations:
+  - key: dedicated
+    operator: Equal
+    value: popsink
+    effect: NoSchedule
+podAntiAffinity:
+  enabled: true
+  # Les pods Popsink vivent dans un autre namespace : sans cette liste,
+  # Kubernetes n'applique l'anti-affinité qu'au namespace du pod Quadringent.
+  namespaces:
+    - popsink
+  matchLabels:
+    ppsk/strategy: ibmi-to-kafka
+
+# Le runtime permanent reste arrêté pendant les pilotes bornés.
+replicaCount: 0
+
+pilot:
+  enabled: false
+
+safety:
+  maxConsecutiveErrors: 3
+
+ibmi:
+  host: "192.0.2.10"
+  user: "CDCUSER"
+  schema: SALES
+  table: SALE
+  journalLibrary: "DEMOLIB"
+  journalName: DEMOJRN
+  sourceTimeZone: Europe/Zurich # QTIMZON=QP0100CET2, lecture DEV du 2026-09-07
+  passwordSecret:
+    name: example-corp-ibmi
+    key: ISERIES_PASSWORD
+
+as400:
+  tls: true
+  allowPlaintext: false
+  tlsCaFile: /app/certs/ibmi-ca.pem
+  tlsCaSecret:
+    name: quadringent-ibmi-ca
+    key: ca.crt
+
+consoleSnapshot:
+  enabled: true
+  s3Key: as400/sales/sale/console-snapshot.json
+  intervalSeconds: 10
+
+controlPlane:
+  enabled: true
+  image:
+    repository: ghcr.io/quadringent/quadringent
+    digest: sha256:91f87c4757f4ae1cf09f91dad593926178016c14f3d6edb709ba03319d0b286d
+  replicaCount: 1
+  # Le stream legacy dev-sale est retiré : la flotte example-corp couvre déjà SALE
+  # dans ses 13 tables et son reader est arrêté. La source principale est la
+  # preuve console enrichie — même URI que launch.fleetConsoleSource (cf.
+  # overlay ECR) pour que le bloc launch n'émette pas de --source dupliqué.
+  source: live:example-corp:s3://example-corp-000000000000-int-example-corp-raw/as400/sales/fleet/console-proof.json
+  port: 8844
+  refreshSeconds: 2
+  serviceAccount:
+    create: true
+    # Transitoire INT : les trust policies IRSA existantes couvrent les SA
+    # cdcforge-*. Les rôles example-platform-int-quadringent-* seront
+    # provisionnés par l'infra (terraform) ; repasser alors aux noms
+    # quadringent-* sans autre changement produit.
+    name: cdcforge-control-plane
+    roleArn: arn:aws:iam::000000000000:role/example-platform-int-cdcforge-control-plane
+  # État d'orchestration de la flotte sur PVC : prepare/history/pause
+  # survivent au remplacement du pod control-plane (gate de reprise).
+  # StorageClass par défaut du cluster EKS ("" = gp* provisionné).
+  fleetState:
+    persistence:
+      enabled: true
+
+storage:
+  rawBucket: example-corp-000000000000-int-example-corp-raw
+  rawPrefix: as400/sales/sale
+  streamKey: as400/sales/sale
+  checkpointTable: example-corp-int-example-corp-checkpoints
+
+aws:
+  region: eu-west-3
+
+# example-corp reste sur le control plane v1 pour l'instant : la migration
+# v2 (Postgres embarqué, surface FastAPI) n'est pas encore planifiée pour ce
+# site — décision explicite plutôt qu'un défaut de chart silencieusement
+# appliqué (postgres.enabled vaut true par défaut depuis son ajout).
+postgres:
+  enabled: false
+
+# Réglages validés par le soak du 2026-08-27 (1810 polls, 0 erreur).
+# Ne pas modifier sans une nouvelle mesure.
+tuning:
+  batchEntries: 60000
+  readerTimeoutSeconds: 15
+  retrieveTimeoutMs: 14000
+  catalogCacheSeconds: 60
+  metricsIntervalSeconds: 60
+
+# SA verifier hors chart : trust IRSA existante sur cdcforge-verifier
+# (transitoire — repasser à quadringent-verifier avec l'infra).
+verifierServiceAccountName: cdcforge-verifier
+
+# Sonde SLO programmée : rafraîchit l'observabilité de la preuve existante,
+# ne démarre jamais de capture. Politique embarquée = slo-policy-dev.json.
+# SA verifier et image par digest fournis hors de la chart.
+observability:
+  enabled: true
+  suspend: false
+  schedule: "*/15 * * * *"
+  imageDigest: "sha256:916e91ab71c973ba255a7c78cb40668a6344dffc43e9e18eca854789dab6b730"
+  policyJson: '{"capture_freshness_seconds":120,"s3_freshness_seconds":180,"destination_freshness_seconds":300,"checkpoint_lag_sequences":1000,"delivery_latency_p95_seconds":60,"delivery_latency_p99_seconds":180,"s3_requests_24h":500000,"snowpipe_pending_files":10,"snowflake_credits_24h":1.0,"observability_freshness_seconds":900}'
+
+# Mesure de la livraison Snowflake de la flotte : publie la preuve combinée
+# sur fleet/console-proof.json (digest aligné sur observability.imageDigest —
+# même image verifier).
+fleetObserve:
+  enabled: true
+  suspend: false
+  schedule: "*/4 * * * *"
+  imageDigest: "sha256:916e91ab71c973ba255a7c78cb40668a6344dffc43e9e18eca854789dab6b730"
+
+costGuardrail:
+  enabled: true
+  requestAlarmThresholdPerDay: 500000

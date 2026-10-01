@@ -1,0 +1,254 @@
+{{- /*
+  gap (a) de docs/product/install-default.md : sans connexion IBM i déclarée
+  (site.connectionDeclared=false), le Deployment du lecteur n'a rien à lire
+  et ne se rend pas du tout — plutôt que de poser des valeurs fictives
+  (as400.tlsCaFile, ibmi.passwordSecret) pour satisfaire ses gardes. Le
+  ConfigMap -tuning et le Secret qu'il référence n'existent alors pas non
+  plus (voir configmap-tuning.yaml) : ce Deployment ne doit donc jamais
+  exister avant qu'une connexion soit déclarée.
+*/ -}}
+{{- if not .Values.site.connectionDeclared }}
+{{- if ne (int .Values.replicaCount) 0 }}
+{{- fail "replicaCount exige site.connectionDeclared=true : aucun lecteur ne peut démarrer sans connexion IBM i déclarée" }}
+{{- end }}
+{{- else }}
+{{- /*
+  replicaCount n'accepte que 0 ou 1. IBM i ne tolère pas deux lecteurs de journal
+  concurrents : le second bloque (mesuré 2026-08-25). La valeur 0 installe la
+  release sans démarrer de pod, ce qui permet de préparer une bascule pendant
+  qu'un autre lecteur tourne encore.
+*/ -}}
+{{- if gt (int .Values.replicaCount) 1 }}
+{{- fail "replicaCount doit valoir 0 ou 1 : IBM i ne tolère pas deux lecteurs de journal concurrents (dual-read = hang, mesuré 2026-08-25)" }}
+{{- end }}
+{{- if and .Values.pilot.enabled (ne (int .Values.replicaCount) 0) }}
+{{- fail "pilot.enabled exige replicaCount=0 : le Job borné et le lecteur permanent ne doivent jamais tourner ensemble" }}
+{{- end }}
+{{- if or (le (int .Values.safety.maxConsecutiveErrors) 0) (gt (int .Values.safety.maxConsecutiveErrors) 3) }}
+{{- fail "safety.maxConsecutiveErrors doit être entre 1 et 3 : chaque erreur est un sign-on IBM i" }}
+{{- end }}
+{{- if le (float64 .Values.consoleSnapshot.intervalSeconds) (float64 0) }}
+{{- fail "consoleSnapshot.intervalSeconds doit être > 0" }}
+{{- end }}
+{{ include "quadringent.siteGuards" . }}
+{{- if eq (printf "%v" .Values.as400.allowPlaintext | lower) "true" }}
+{{- fail "as400.allowPlaintext doit rester false : le plaintext IBM i est interdit" }}
+{{- end }}
+{{- if ne (printf "%v" .Values.as400.tls | lower) "true" }}
+{{- fail "as400.tls doit rester true" }}
+{{- end }}
+{{- if empty .Values.as400.tlsCaFile }}
+{{- fail "as400.tlsCaFile est obligatoire lorsque TLS est actif" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "quadringent.fullname" . }}
+  annotations:
+    quadringent.io/environment: {{ .Values.deployment.environment }}
+    quadringent.io/production-promotion: forbidden
+  labels:
+    {{- include "quadringent.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: Recreate          # jamais deux lecteurs en même temps, même le temps d'un rollout
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "quadringent.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        {{- include "quadringent.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ required "serviceAccount.name est obligatoire" .Values.serviceAccount.name }}
+      {{- $pullSecrets := .Values.imagePullSecrets }}
+      {{- if .Values.image.pullSecret }}
+      {{- $pullSecrets = append $pullSecrets (dict "name" .Values.image.pullSecret) }}
+      {{- end }}
+      {{- if $pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml $pullSecrets | nindent 8 }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.podAntiAffinity.enabled }}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  {{- toYaml .Values.podAntiAffinity.matchLabels | nindent 18 }}
+              namespaces:
+                {{- toYaml .Values.podAntiAffinity.namespaces | nindent 16 }}
+              topologyKey: kubernetes.io/hostname
+      {{- else }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- end }}
+      volumes:
+        {{- include "quadringent.caVolume" . | nindent 8 }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      containers:
+        - name: capture
+          image: {{ include "quadringent.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --metrics-interval-seconds
+            - {{ .Values.tuning.metricsIntervalSeconds | quote }}
+            - --max-consecutive-errors
+            - {{ .Values.safety.maxConsecutiveErrors | quote }}
+            {{- if .Values.consoleSnapshot.enabled }}
+            - --console-snapshot-interval-seconds
+            - {{ .Values.consoleSnapshot.intervalSeconds | quote }}
+            {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "quadringent.fullname" . }}-tuning
+            - configMapRef:
+                name: {{ include "quadringent.fullname" . }}-site
+          env:
+            - name: ISERIES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "ibmi.passwordSecret.name est obligatoire" .Values.ibmi.passwordSecret.name }}
+                  key: {{ required "ibmi.passwordSecret.key est obligatoire" .Values.ibmi.passwordSecret.key }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            {{- include "quadringent.caMount" . | nindent 12 }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            # Docker USER porte un nom ; kubelet exige un UID explicite pour
+            # certifier runAsNonRoot avant même de démarrer le conteneur.
+            runAsUser: 10001
+            runAsGroup: 10001
+            capabilities:
+              drop: ["ALL"]
+          # Le lecteur n'expose aucun endpoint et n'écrit aucun heartbeat local :
+          # le snapshot console part en S3. La readiness vérifie donc que le
+          # processus python de capture et son worker JVM vivent — la sonde
+          # exclut son propre pid pour ne pas s'attester elle-même ; la
+          # liveness mesure la progression CPU du worker JVM dans /proc — une
+          # JVM gelée n'y consomme plus rien et finit par dépasser le seuil
+          # interne de 240 s, là où un pgrep verrait encore un processus
+          # « vivant ».
+          readinessProbe:
+            exec:
+              command:
+                - /opt/venv/bin/python
+                - -S
+                - -c
+                - |
+                  import glob, os, sys
+                  self_pid = os.getpid()
+                  worker = jvm = False
+                  for path in glob.glob("/proc/[0-9]*/comm"):
+                      pid = int(path.split("/")[2])
+                      if pid == self_pid:
+                          continue
+                      try:
+                          with open(path) as handle:
+                              comm = handle.read().strip()
+                      except OSError:
+                          continue
+                      if comm == "java":
+                          jvm = True
+                      elif comm.startswith("python"):
+                          # Seul le lecteur python atteste la readiness : un
+                          # autre probe concurrent ne doit pas se prendre
+                          # pour le worker.
+                          try:
+                              with open("/proc/%d/cmdline" % pid, "rb") as handle:
+                                  cmdline = handle.read()
+                          except OSError:
+                              continue
+                          if b"as400_continuous_capture" in cmdline:
+                              worker = True
+                  sys.exit(0 if worker and jvm else 1)
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - /opt/venv/bin/python
+                - -S
+                - -c
+                - |
+                  import glob, json, os, sys, time
+                  STALE_SECONDS = 240.0
+                  STATE = "/tmp/quadringent-capture-live.json"
+                  self_pid = os.getpid()
+                  ticks = 0
+                  for path in glob.glob("/proc/[0-9]*/stat"):
+                      pid = int(path.split("/")[2])
+                      if pid == self_pid:
+                          continue
+                      try:
+                          with open(path) as handle:
+                              raw = handle.read()
+                          # Seul le worker JVM compte : la sonde elle-même et
+                          # le lecteur python consomment des ticks sans jamais
+                          # prouver que le lecteur JVM progresse.
+                          comm = raw[raw.index("(") + 1:raw.rindex(")")]
+                          if comm != "java":
+                              continue
+                          fields = raw.rsplit(")", 1)[-1].split()
+                          ticks += int(fields[11]) + int(fields[12])
+                      except (OSError, IndexError, ValueError):
+                          continue
+                  if ticks <= 0:
+                      sys.exit(1)
+                  now = time.time()
+                  try:
+                      with open(STATE) as handle:
+                          previous = json.load(handle)
+                  except (OSError, ValueError):
+                      previous = {}
+                  if previous.get("ticks") != ticks:
+                      previous = {"ticks": ticks, "since": now}
+                  elif now - float(previous.get("since", now)) > STALE_SECONDS:
+                      sys.exit(1)
+                  try:
+                      with open(STATE, "w") as handle:
+                          json.dump(previous, handle)
+                  except OSError:
+                      pass
+                  sys.exit(0)
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+{{- end }}

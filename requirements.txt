@@ -1,0 +1,3 @@
+# Compatibilité Docker : la dépendance canonique est dans pyproject.toml.
+boto3>=1.40,<2
+google-cloud-storage>=3,<4

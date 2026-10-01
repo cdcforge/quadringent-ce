@@ -1,0 +1,8 @@
+{
+  "_comment": "Gabarit hors ligne pour quadringent install : digests fictifs. Utiliser le release-manifest.json de la release validée ou un manifeste construit depuis les digests du registre du site.",
+  "repository": "ghcr.io/quadringent/quadringent",
+  "imageDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "controlPlaneImageDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "verifierImageDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "observabilityImageDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+}

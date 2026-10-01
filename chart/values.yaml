@@ -1,0 +1,520 @@
+# Chart Quadringent. Les valeurs du site restent hors du dépôt ;
+# le code applicatif est livré dans les images OCI de la release.
+
+image:
+  repository: ghcr.io/quadringent/quadringent
+  # Toujours un digest, jamais un tag mouvant.
+  digest: ""
+  pullPolicy: IfNotPresent
+  pullSecret: ""          # imagePullSecret pour le registre privé
+
+# Cette chart est volontairement une surface hors production. Elle ne
+# contient aucun profil PROD et refuse tout rendu qui prétend en être un.
+deployment:
+  environment: dev
+  productionPromotionAllowed: false
+
+# Identité déclarée du site : tout ce qui appartient à une installation vit
+# ici, injecté dans les pods via le ConfigMap « -site » (QUADRINGENT_*) et
+# validé au rendu. Aucun défaut n'est fourni : une release sans déclaration
+# de site est refusée.
+site:
+  # false (défaut du gabarit de l'installateur « mode par défaut ») : aucune
+  # connexion IBM i n'est encore déclarée (assistant en trois écrans, hors
+  # périmètre de ce chantier — voir docs/product/install-default.md). Le
+  # rendu se limite alors à ce que l'installateur connaît réellement à ce
+  # stade (identité du site, stockage) ; tous les champs de connexion IBM
+  # i/Snowflake ci-dessous restent vides et ne sont ni exigés ni publiés.
+  # true : une connexion est déclarée, tous les champs ci-dessous redeviennent
+  # obligatoires — comportement historique de la chart, inchangé.
+  connectionDeclared: true
+  # Tarif du contrat client, jamais un prix public par défaut.
+  snowflakeCreditPrice: ""
+  costCurrency: ""
+  id: ""                    # identifiant court du site (minuscules, borné)
+  awsAccountId: ""          # compte AWS de douze chiffres
+  namespace: ""             # namespace Kubernetes déclaré ; tout autre est refusé
+  ibmiHost: ""
+  ibmiUser: ""
+  sourceSchema: ""
+  proofTable: ""            # table de la voie de preuve (doit être dans fleetTables)
+  journalName: ""
+  rawBucket: ""
+  rawPrefixRoot: ""         # racine des préfixes, ex. <produit>/<bibliothèque>
+  checkpointTable: ""
+  destinationDatabase: ""
+  destinationSchema: ""
+  destinationId: ""
+  # Préfixe des objets Snowflake provisionnés (tables RAW, vues canoniques,
+  # pipes, warehouse, rôle). Optionnel : le runtime applique QUADRINGENT.
+  # Déclaré quand les objets du site portent un autre préfixe.
+  destinationPrefix: ""
+  # Voie de matérialisation historique/miroir. "" (par défaut) applique
+  # copy_merge (chemin COPY INTO + MERGE existant). "streaming" active
+  # Snowpipe Streaming pour l'historique + MERGE miroir loader-driven
+  # (option B, docs/decisions/2026-09-23-miroir-snowflake.md) — exige alors
+  # streaming.profileSecret.
+  destinationMode: ""
+  snowflakeAccount: ""
+  snowflakeConnection: ""   # alias de connexion Snowflake (optionnel)
+  # Warehouse existant, géré hors de Quadringent : jamais créé ni suspendu.
+  # Vide : warehouse dédié dérivé du préfixe. Un warehouse partagé exige une
+  # attribution distincte des coûts ; son total n'est pas un coût produit.
+  snowflakeWarehouse: ""
+  awsProfile: ""            # profil AWS local (optionnel)
+  # Nom du document de preuve autonome publié par le vérificateur. Optionnel :
+  # le runtime applique quadringent-autonomous-latest.json. Déclaré quand les
+  # politiques IAM du site autorisent un nom d'objet précis.
+  autonomousProofName: ""
+  fleetTables: []           # manifeste des tables de la flotte
+  keyedTables: []
+  provisionedStages: []
+  reservableTables: []      # vide : seule la table de preuve est réservable
+  proofKeyColumns: []
+  forbiddenFragments: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+# GKE lie les ServiceAccounts Kubernetes par Workload Identity. Sur une VM
+# Compute Engine dédiée, les pods k3s emploient l'identité attachée au nœud
+# via son serveur de métadonnées ; ils ne reçoivent pas d'annotation GKE.
+gcpIdentityMode: gke-workload-identity
+
+serviceAccount:
+  # Identité cloud des pods de capture (lecteur de journal, Jobs/Deployments
+  # créés par l'exécuteur de pipeline v2 via QUADRINGENT_V2_CAPTURE_SERVICE_ACCOUNT
+  # — voir chart/templates/control-plane.yaml). true (défaut) : la chart crée
+  # ce ServiceAccount et pose l'annotation d'identité cloud correspondante
+  # (IRSA AWS ou Workload Identity GCP) selon storage.backend — voir
+  # chart/templates/serviceaccount.yaml. false : le site fournit déjà ce
+  # ServiceAccount (et son identité cloud) hors de la chart.
+  create: true
+  name: quadringent-capture # ServiceAccount Pod Identity du site (S3/GCS, DynamoDB)
+  # Identité IRSA AWS : obligatoire (et exclusive de gcpServiceAccount) quand
+  # create=true et storage.backend=aws.
+  roleArn: ""
+  # Compte GCP attendu : lié par Workload Identity sur GKE ou attaché à la VM.
+  # Obligatoire (et exclusif de roleArn) avec storage.backend=gcs.
+  gcpServiceAccount: ""
+  # Annotations additionnelles du ServiceAccount, fusionnées avec l'annotation
+  # d'identité cloud (eks.amazonaws.com/role-arn ou iam.gke.io/gcp-service-account)
+  # gérée par la chart selon storage.backend.
+  annotations: {}
+
+replicaCount: 1          # un seul lecteur de journal : IBM i n'en tolère pas deux
+
+# Palier de certification borné. Quand il est actif, le Deployment permanent
+# doit rester à 0 et un Job unique exécute le même worker avec un budget strict.
+pilot:
+  enabled: false
+  # Identifiant neuf : le worker le réserve dans S3 avant tout accès source.
+  # Chemins : <storage.rawPrefix>/runs/<runId>. Un rendu Helm seul ne réserve rien.
+  runId: ""
+  maxPolls: 400000
+  maxSeconds: 7200
+  shutdownMarginSeconds: 60
+  ttlSecondsAfterFinished: 86400
+  proofWindow:
+    enabled: false
+    id: ""
+    seconds: 600
+    # Optional durable chain. Omit for legacy single-window capture.
+    # count: 3
+
+# ServiceAccount des charges de vérification (CronJob d'observabilité et Job
+# verifier). Créé hors de la chart par l'infrastructure du site, avec son rôle
+# IAM (IRSA) dédié : la chart ne crée aucune identité AWS pour la vérification.
+verifierServiceAccountName: quadringent-verifier
+
+# Observateur séparé : ne crée aucun rôle ni permission. Voie de preuve du site seulement.
+verification:
+  enabled: false
+  publishProof: false
+  slo:
+    enabled: false
+    # Load the versioned policy with --set-file verification.slo.policyJson=...
+    policyJson: ""
+  imageDigest: "sha256:6d7a8499253e2f255fc2ad3648649aeffb65614211bfc22930ee08a0b67d1490"
+
+# Independent refresh of existing evidence: never starts capture.
+observability:
+  enabled: false
+  suspend: true
+  schedule: "*/15 * * * *"
+  policyJson: ""
+  imageDigest: "sha256:bed8fd72dcdfc6484a804a67715c95b760ee94bb2b6193ef7c0721cdc8fef309"
+  # Alertes SLO optionnelles : sans destination déclarée, le CronJob mesure
+  # en silence et ne peut pas échouer sur un état d'alerte.
+  alerts:
+    webhookUrl: ""
+    snsTopic: ""
+
+# Mesure périodique de la livraison Snowflake de la flotte : le CronJob lit
+# fleet/console-snapshot.json, mesure les tuyaux et volumes des voies
+# déclarées, et publie la preuve combinée sur fleet/console-proof.json —
+# une clé, un écrivain. La cadence doit rester sous la fenêtre de
+# fraîcheur document (5 min) ; un relevé suspendu laisse la projection
+# déclarer la livraison non observée.
+fleetObserve:
+  enabled: false
+  suspend: true
+  schedule: "*/4 * * * *"
+  imageDigest: ""
+  # Lectures de manifestes S3 plafonnées par cycle : le registre avance
+  # à chaque run sans jamais dépasser le délai de 300 s du job.
+  manifestBudget: 1500
+
+safety:
+  # Jamais plus de 3 : chaque erreur est un nouveau sign-on IBM i, et une
+  # rafale peut désactiver le profil source. La garde durable borne à 3.
+  maxConsecutiveErrors: 3
+
+# Amorçage explicite : `checkpoint` refuse de démarrer sans état durable,
+# `tail` lit une fenêtre finie au plus près de la source, et `explicit` exige
+# un receiver + une séquence. Le pilote de coexistence utilise `tail`.
+bootstrap:
+  mode: checkpoint
+  receiver: ""
+  sequence: ""
+
+# Placement : propre au cluster du site, déclaré dans les values du site.
+nodeSelector: {}
+tolerations: []
+podAntiAffinity:
+  enabled: false
+  # namespaces : sans cette liste, Kubernetes n'applique l'anti-affinité qu'au
+  # namespace du pod Quadringent.
+  namespaces: []
+  matchLabels: {}
+# Affinité Kubernetes brute (nodeAffinity/podAffinity), pour les profils
+# experts qui ont besoin de plus que podAntiAffinity. Vide : aucun effet.
+affinity: {}
+
+# Personnalisation avancée du Pod du lecteur, pour le mode expert self-host.
+# Toutes ces valeurs sont vides par défaut : aucun changement de comportement
+# tant qu'un site ne les renseigne pas explicitement.
+podSecurityContext: {}         # securityContext au niveau Pod (fsGroup, sysctls, ...)
+podAnnotations: {}             # annotations additionnelles posées sur le Pod
+podLabels: {}                  # labels additionnels posés sur le Pod
+imagePullSecrets: []           # imagePullSecrets additionnels, au-delà de image.pullSecret
+extraEnv: []                   # variables d'environnement additionnelles (format EnvVar)
+extraVolumes: []               # volumes additionnels (format Volume Kubernetes)
+extraVolumeMounts: []          # points de montage additionnels (format VolumeMount)
+
+# NetworkPolicy optionnelle restreignant le trafic du namespace. Désactivée
+# par défaut : aucun changement de comportement réseau existant.
+networkPolicy:
+  enabled: false
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 2Gi
+
+# Câblage d'exécution du lecteur. Pour les opérations de preuve (fenêtre,
+# vérification, observabilité), ces valeurs doivent égaler l'identité déclarée
+# dans « site » — la voie de preuve n'existe que sur le site déclaré.
+ibmi:
+  host: ""
+  user: ""
+  schema: ""
+  table: ""
+  journalLibrary: "DEMOLIB"
+  journalName: ""
+  # Explicit IANA zone, verified against IBM i at connection. Never infer UTC.
+  sourceTimeZone: ""
+  # mot de passe : jamais dans les values
+  passwordSecret:
+    name: ""
+    key: ISERIES_PASSWORD
+
+as400:
+  tls: true
+  allowPlaintext: false
+  tlsCaFile: ""
+  tlsCaSecret:
+    name: ""
+    key: ca.crt
+  # Surcharges de ports JTOpen (AS400_*_PORT). Vides : défauts du driver —
+  # 9471/9475/9476 en TLS, 8471/8475/8476 en clair. Renseigner uniquement
+  # quand l'IBM i du site écoute sur des ports non standard ; le même réglage
+  # vaut pour le lecteur et pour le diagnostic pré-vol.
+  databasePort: ""
+  signonPort: ""
+  commandPort: ""
+
+# Contrat déclaratif du profil SDK Snowpipe Streaming (clé privée + compte)
+# lorsque site.destinationMode=streaming : QUADRINGENT_STREAMING_PROFILE_JSON
+# (configmap-site.yaml) publie mountPath/profileSecret.key comme chemin
+# attendu. Le lecteur IBM i (Deployment "capture") ne charge jamais
+# Snowflake (raw-first : voir continuous.py) — cette chart ne monte donc pas
+# encore profileSecret dans un Pod : c'est la charge qui exécute le
+# chargeur Snowpipe Streaming (hors périmètre de cette chart pour l'instant)
+# qui doit monter ce Secret sous mountPath, jamais en variable d'environnement.
+streaming:
+  profileSecret:
+    name: ""
+    key: profile.json
+  mountPath: /app/secrets/streaming
+
+consoleSnapshot:
+  enabled: false
+  s3Key: ""
+  intervalSeconds: 10
+
+# API de consultation read-only, indépendante du lecteur IBM i. Elle ne reçoit
+# aucun secret et peut rester active lorsque replicaCount=0.
+controlPlane:
+  enabled: false
+  image:
+    repository: ghcr.io/quadringent/quadringent
+    digest: ""
+    pullPolicy: IfNotPresent
+    # Registres autorisés pour l'image control-plane. La livraison site peut
+    # mirer l'image dans son propre registre : le site ajoute alors son
+    # repository ici. Le digest sha256 reste obligatoire (immuabilité).
+    allowedRepositories:
+      - ghcr.io/quadringent/quadringent
+  replicaCount: 1
+  source: ""
+  # Optional immutable destination proof; never selects or invents a latest window.
+  windowProof: ""
+  infrastructureCostsSource: "" # file:///var/lib/quadringent-fleet/infrastructure-costs.json, collecte séparée
+  port: 8844
+  refreshSeconds: 2
+  # Intervalle du relevé catalogue IBM i (FleetCatalogProbe) en secondes.
+  # Régénère le catalogue et le sidecar UI sur le PVC d'état flotte et tente
+  # d'appliquer le nouveau plan à l'exécuteur. 0 désactive le relevé
+  # périodique ; ignoré quand fleetState.persistence.enabled=false.
+  catalogRefreshSeconds: 300
+  # Adresse d'écoute. Loopback seul sans authentification ; une adresse non
+  # loopback exige auth.enabled=true (identité vérifiée par le proxy du site).
+  host: "127.0.0.1"
+  # Authentification déléguée à l'IdP du site via un proxy de confiance
+  # (oauth2-proxy, forward-auth d'Ingress, IAP). Le proxy termine l'OIDC et
+  # pose les en-têtes ci-dessous ; seul ce proxy peut les écrire — la route
+  # vers le control plane ne doit pas être joignable sans passer par lui.
+  # Les membres se gèrent dans l'IdP : un opérateur = membre d'un groupe
+  # déclaré dans operatorGroups. Sans en-tête, la requête est refusée.
+  auth:
+    enabled: false
+    userHeader: X-Forwarded-User
+    groupsHeader: X-Forwarded-Groups
+    operatorGroups: []        # groupes IdP autorisés à lancer les actions
+    adminGroups: []           # groupes IdP administrateurs
+    # Preuve de transit par le proxy : le proxy pose l'en-tête
+    # x-quadringent-proxy-secret avec cette valeur partagée ; le control plane
+    # refuse toute identité sans elle — un accès direct au pod ne forge alors
+    # plus aucun rôle. Référence à un Secret du site (jamais en clair ici).
+    proxySecret:
+      secretName: ""          # Secret.data[<secretKey>] portant le secret
+      secretKey: ""
+  # Télémétrie produit — opt-in uniquement, désactivée par défaut. Un ping
+  # quotidien minimal (identifiant d'installation anonyme haché, version,
+  # édition communautaire, nombre de tables) vers l'endpoint vendeur ou un
+  # collecteur du site. Jamais de donnée métier, d'hôte, de table ni
+  # d'utilisateur — voir docs/product/telemetry.md.
+  telemetry:
+    enabled: false
+    endpoint: ""              # vide = endpoint vendeur ; https obligatoire
+  serviceAccount:
+    create: true
+    name: quadringent-control-plane
+    # Identité IRSA AWS : obligatoire (et exclusive de gcpServiceAccount)
+    # quand storage.backend=aws.
+    roleArn: ""
+    # Compte GCP attendu : lié par Workload Identity sur GKE ou attaché à la VM.
+    # Obligatoire (et exclusif de roleArn) avec storage.backend=gcs.
+    gcpServiceAccount: ""
+    # Annotations additionnelles du ServiceAccount, fusionnées avec
+    # l'annotation d'identité cloud (eks.amazonaws.com/role-arn ou
+    # iam.gke.io/gcp-service-account) gérée par la chart selon storage.backend.
+    annotations: {}
+  # Lancement de Jobs de capture depuis le contrôleur. Désactivé par défaut :
+  # l'activation monte le jeton du ServiceAccount et accorde create/get sur les
+  # Jobs du namespace de release uniquement.
+  launch:
+    enabled: false
+    jobTemplate: ""
+    fleetCatalog: ""
+    fleetSidecar: ""
+  # État d'orchestration de la flotte (fleet-prepare.json, fleet-history.json,
+  # fleet-pause.json) : la mémoire de la gate de reprise du lanceur. Persisté
+  # sur un PersistentVolumeClaim par défaut — un remplacement du pod reprend
+  # alors au dernier état écrit au lieu de repartir d'un répertoire vide.
+  # `enabled: false` revient à l'emptyDir volatil. Sans effet quand
+  # launch.enabled=false.
+  fleetState:
+    persistence:
+      enabled: true
+      size: 256Mi
+      # "" = StorageClass par défaut du cluster ; "-" = provisionnement
+      # dynamique désactivé (PersistentVolume provisionné à la main).
+      storageClassName: ""
+  resources:
+    requests:
+      cpu: 20m
+      memory: 96Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  # Surface v2 (FastAPI/uvicorn, Postgres) : second conteneur du même Pod,
+  # v1 conservée intacte à côté (deux surfaces, deux ports, une identité de
+  # Pod). Désactivée par défaut : v1 seule reste le comportement historique
+  # jusqu'à ce qu'un site migre explicitement.
+  v2:
+    enabled: false
+    # Fréquence des Deployments dynamiques créés par l'exécuteur v2.
+    # L'opérateur peut réduire ces attentes sur un site qualifié ; le lecteur
+    # interroge alors l'IBM i plus souvent et le chargeur consulte GCS.
+    readerPollSeconds: 5
+    loaderPollSeconds: 10
+    # streaming : Snowpipe Streaming ; sql : MERGE historique synchrone par
+    # EVENT_ID pour les petits flux où la latence est prioritaire.
+    loaderHistoryMode: streaming
+    # Force le flush Snowpipe après chaque lot : latence réduite, mais plus
+    # de requêtes et de coût sur les flux à fort volume.
+    loaderFlushEachBatch: false
+    image:
+      # Vide = controlPlane.image (même image : le code v2 y est déjà inclus).
+      repository: ""
+      digest: ""
+    port: 8845
+    # Identifiant d'organisation ; vide = site.id.
+    orgId: ""
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+# Diagnostic pré-vol : un Job borné qui vérifie les dépendances déclarées du
+# site (joignabilité TCP IBM i, sonde S3 écriture/lecture, table DynamoDB de
+# checkpoints, destination Snowflake si identifiants configurés, capacité
+# RBAC Jobs en informatif). Le pod écrit une checklist lisible dans ses
+# journaux et sort en échec dès qu'un contrôle requis échoue — le client voit
+# les problèmes d'installation avant que la capture ne démarre.
+# Désactivé par défaut : rendu et exécution restent explicites.
+preflight:
+  enabled: false
+  # ServiceAccount du pod : l'identité de capture par défaut (droits S3 et
+  # DynamoDB du site). Pour vérifier la voie de lancement de flotte, utiliser
+  # quadringent-control-plane — les contrôles AWS deviennent alors sans objet.
+  serviceAccountName: ""
+  # Monte un jeton OIDC projeté (audience snowflakecomputing.com) et active
+  # le contrôle Snowflake en cluster. Exige une image embarquant
+  # snowflake-connector-python — l'image control-plane ne l'a pas : pointer
+  # preflight.image vers l'image vérificateur et choisir un ServiceAccount
+  # reconnu par la confiance workload identity du site.
+  snowflakeOidc: false
+  image:
+    repository: ""          # défaut : controlPlane.image.repository
+    digest: ""              # défaut : controlPlane.image.digest (sha256 exigé)
+
+# Réglages validés par le soak du 2026-08-27 : 0 erreur sur 1810 polls,
+# lag maintenu à 1 séquence, 30,3 M séquences rattrapées en 174 s.
+tuning:
+  batchEntries: 60000          # fenêtre de séquences journal par appel
+  maxDecodedEntries: 70000
+  journalBufferSize: 16000000
+  readerTimeoutSeconds: 15
+  retrieveTimeoutMs: 14000
+  moreDataTimeoutMs: 3000
+  finalPositionTimeoutMs: 2000
+  pollSeconds: 2
+  minPollSeconds: 1            # plancher de l'attente oisive adaptative (doublement jusqu'à pollSeconds)
+  tailProbe: true              # sonde bornée (receiver ATTACHED) à chaque poll, sans catalogue complet
+  emptyProbe: true             # probe conditionnel : seulement si lag <= fenêtre
+  catalogQueryTimeoutSeconds: 8
+  receiverMetadataLimit: 8
+  catalogCachePolls: 30
+  catalogCacheSeconds: 60
+  catalogMaxStale: 5
+  catchUpBatchEntries: 2000
+  catchUpDivisor: 10
+  metricsIntervalSeconds: 60   # résume les polls calmes, sinon ~110 000 lignes/jour
+
+storage:
+  # aws (défaut) : bucket S3 + table DynamoDB de checkpoints.
+  # gcs : bucket GCS unique pour le brut et les checkpoints (préfixes
+  # distincts côté runtime, voir storage.checkpointBucket ci-dessous).
+  backend: aws
+  rawBucket: ""
+  rawPrefix: ""
+  streamKey: ""
+  # Requis quand storage.backend=aws : nom de la table DynamoDB.
+  checkpointTable: ""
+  # Requis quand storage.backend=gcs : bucket GCS des checkpoints (peut être
+  # le même bucket que rawBucket, sous des préfixes distincts côté runtime).
+  checkpointBucket: ""
+
+aws:
+  region: ""                # région AWS du site, ex. us-east-1
+
+# Seuil indicatif AWS : la chart ne crée pas d'alarme CloudWatch ni de budget.
+# Configurer et vérifier l'alerte de facturation dans le compte AWS.
+costGuardrail:
+  enabled: true
+  requestAlarmThresholdPerDay: 500000
+
+# Postgres embarqué par la chart pour l'état du control plane v2 — décision
+# produit « un chart pour les deux modes » : actif par défaut (StatefulSet à
+# une réplique + volume), une installation experte pointe un Postgres géré
+# externe via `externalDatabase` à la place (postgres.enabled: false).
+# Sans objet tant que controlPlane.v2.enabled=false.
+postgres:
+  enabled: true
+  image:
+    repository: docker.io/library/postgres
+    # postgres:16-alpine, résolu le 2026-09-23 via
+    # `docker pull postgres:16-alpine && docker inspect --format='{{index .RepoDigests 0}}' postgres:16-alpine`
+    # — voir CHANGELOG pour la provenance complète.
+    digest: "sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea"
+    pullPolicy: IfNotPresent
+  # Utilisateur de l'image : postgres = uid/gid 70 en variante alpine (999 en
+  # variante Debian). L'image démarre en root puis bascule : runAsNonRoot exige
+  # de fixer l'UID explicitement.
+  runAsUser: 70
+  database: quadringent
+  username: quadringent
+  port: 5432
+  storage:
+    size: 5Gi
+    # "" = StorageClass par défaut du cluster.
+    storageClassName: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  # Sauvegarde logique périodique (pg_dump) vers le stockage objet du site
+  # (storage.backend) — voir scripts/quadringent_postgres_backup.py.
+  # Désactivée par défaut : rendu et exécution restent explicites.
+  backup:
+    enabled: false
+    schedule: "0 3 * * *"
+    # Préfixe objet des sauvegardes, sous storage.rawBucket.
+    destinationPrefix: "postgres-backups"
+    # ServiceAccount du CronJob : identité de capture par défaut du site
+    # (droits S3/GCS déjà accordés). Déclarer un ServiceAccount dédié si la
+    # politique du site distingue lecture et écriture de sauvegarde.
+    serviceAccountName: ""
+
+# Postgres géré externe (RDS, Cloud SQL, ...) — alternative à `postgres`
+# pour une installation experte. Mutuellement exclusif avec postgres.enabled.
+externalDatabase:
+  # DSN SQLAlchemy complet (postgresql+psycopg://...). Alternative à
+  # existingSecret ci-dessous — jamais les deux à la fois.
+  url: ""
+  # Secret du site portant le DSN sous existingSecretKey. Préféré à `url` en
+  # clair dans les values.
+  existingSecret: ""
+  existingSecretKey: "url"

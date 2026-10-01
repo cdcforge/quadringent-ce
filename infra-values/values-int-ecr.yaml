@@ -1,0 +1,78 @@
+# Variante temporaire : images hébergées dans l'ECR example-corp, en attendant un classic
+# PAT avec write:packages pour publier sur ghcr.io. La cible reste ghcr.io privé.
+#
+# Exemple de rendu ; fleet-catalog-int.json est une fixture synthétique,
+# sans observation runtime ni preuve de continuité :
+#   helm upgrade quadringent chart/ -n quadringent-demo \
+#     -f infra-values/values-int.yaml -f infra-values/values-int-ecr.yaml \
+#     --set-file controlPlane.launch.jobTemplate=infra-values/job-template-int.json \
+#     --set-file controlPlane.launch.fleetCatalog=infra-values/fleet-catalog-int.json \
+#     --set-file controlPlane.launch.fleetSidecar=infra-values/fleet-sidecar-int.json
+image:
+  repository: 000000000000.dkr.ecr.eu-west-3.amazonaws.com/example-platform-int/quadringent-demo-capture
+  # capture multi-arch (amd64+arm64) — support *AFTER : deletes par RRN,
+  # _rrn injecté dans les images, gardes fichier/rollback fail-closed,
+  # manifeste runtime complété (destination_*, slo_telemetry, snowflake_*)
+  # + garde source durable : 3 sign-ons max comptés en DynamoDB, pause bornée
+  # sur indisponibilité (maintenance), blocage durable sur refus d'auth,
+  # connect_error=<CLASS> côté JVM — ee86276 (amd64)
+  # + catalogue ancré sur le checkpoint : span checkpoint→tail plutôt que
+  #   les N receivers les plus récents — b4bc059 (amd64)
+  digest: "sha256:f7675795b6f07f6e9a7dfcfebae3cf3f4825a1879b40afbcc91132a46ba1a1f1"
+  pullSecret: ""          # ECR : accès par Pod Identity, pas d'imagePullSecret
+
+controlPlane:
+  image:
+    repository: 000000000000.dkr.ecr.eu-west-3.amazonaws.com/example-platform-int/quadringent-demo-capture
+    # control-plane amd64 : identité keyed/rrn/blocked + table_merge_key,
+    # continuité receivers via PREVIOUS_JOURNAL_RECEIVER (7.5), UI métier
+    # dédupliquée (runtime live non masqué par un catalogue daté, 13 checks
+    # SLO tolérés au sur-ensemble), manifeste runtime complété, console
+    # flotte sur clé S3 dédiée (reader+history), source principale = flotte
+    # (dev-sale retiré) — 0958660 + suite
+    # + relevé catalogue in-pod (FleetCatalogProbe, plan échangé hors action,
+    # sidecar durable sur PVC, action refresh), fleet-proof sur le PVC,
+    # env QUADRINGENT_FLEET_STATE_PERSISTENT/CATALOG_REFRESH_SECONDS,
+    # + identité des voies = composition (slot, tables) : la dérive des
+    # estimations row_count/data_size n'invalide plus la phase HISTORICAL
+    # + pilote de progression mesurée (fleet-run.json sur PVC projeté en
+    # phases domaine), collecteur d'évidence snapshot+preuve, phases
+    # publiques étendues et libellés UI par voie
+    # publiques étendues et libellés UI par voie ; receiver attaché ouvert
+    # (la fraîcheur lecteur n'est plus une discontinuité) ; rattrapage =
+    # rang >= queue cataloguée, pas égalité stricte ; trou temporel =
+    # intervalle réel non couvert (série valide côté client) ; copie
+    # initiale « Terminée » dès CATCHING_UP (la phase est la preuve) ;
+    # table_states porte copied_rows/total_rows mesurés par voie ;
+    # état général = phase runtime mesurée (LIVE → Disponible) ;
+    # détail copie : repli sur les phases runtime sans document flotte ;
+    # pilote de certification : LIVE→RECONCILING→CERTIFIED sur preuve
+    # mesurée (certify.tables embarqué dans console-proof.json)
+    # + projection PAUSED_SOURCE / STOPPED_AUTH_BLOCKED — ee86276 (amd64)
+    digest: "sha256:64bfcbe9b589284a012bc90b7b78aac2e1a16fbc2fba6b3b97c747c08803feef"
+    allowedRepositories:
+      - ghcr.io/quadringent/quadringent
+      - 000000000000.dkr.ecr.eu-west-3.amazonaws.com/example-platform-int/quadringent-demo-capture
+  # Lancement des Jobs de flotte (prepare/start/pause/resume). Activé avec
+  # l'image ECR qui contient l'exécuteur ; les artefacts sont passés par
+  # --set-file depuis ce dossier (voir la commande en tête de fichier).
+  launch:
+    enabled: true
+    # Pont local : le reader publie la console flotte sur S3
+    # Source console : la preuve enrichie publiée par fleetObserve — le
+    # document mesuré porte les étapes load/destination (le snapshot brut
+    # du lecteur reste la source de la sonde, jamais consommé par la
+    # console).
+    fleetConsoleSource: "s3://example-corp-000000000000-int-example-corp-raw/as400/sales/fleet/console-proof.json"
+
+# Image du CronJob d'observabilité (même repository que image ci-dessus) :
+# verifier rebuildée — sonde de certification par voie (scan figé
+# AT(TIMESTAMP), empreinte identité, opérations journal, document
+# embarqué dans console-proof.json à TTL, jamais fatale au cycle courant).
+observability:
+  imageDigest: "sha256:4ad5fbebfa8c44d7fb266b48a3d4c4f51f4c121cae64e719c49ea7a225e72324"
+
+# CronJob de mesure de livraison flotte : même image verifier que
+# l'observabilité (le script y vit).
+fleetObserve:
+  imageDigest: "sha256:4ad5fbebfa8c44d7fb266b48a3d4c4f51f4c121cae64e719c49ea7a225e72324"

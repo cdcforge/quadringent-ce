@@ -1,0 +1,89 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quadringent"
+version = "0.2.3"
+description = "Capture de changements IBM i vers Snowflake, avec preuves de progression"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md", "licenses/*"]
+dependencies = ["boto3>=1.40,<2", "PyYAML>=6,<7"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+    "pyflakes==3.4.0",
+    "PyYAML==6.0.3",
+    "ruff>=0.12,<1",
+    "mypy>=1.17,<2",
+    "build>=1.2,<2",
+    "httpx>=0.27,<1",
+    "jsonschema>=4,<5",
+]
+snowflake = ["snowflake-connector-python>=3.18,<5"]
+# Snowpipe Streaming (architecture high-performance, `quadringent.
+# snowflake_streaming_loader.SnowpipeStreamingClientAdapter`) : import
+# différé au constructeur de l'adaptateur, donc jamais requis pour les
+# tests unitaires (FakeStreamingClient) ni pour le chemin copy_merge par
+# défaut. Version mesurée dans la décision du 23/09/2026 : 1.8.0.
+streaming = ["snowpipe-streaming>=1.8,<2"]
+gcs = ["google-cloud-storage>=3,<4"]
+# Control plane v2 (`/v2`) : FastAPI + Postgres (SQLAlchemy Core) + Alembic.
+# Extra optionnel pour ne pas alourdir les installations qui n'utilisent que
+# `/v1` (lecteur de projections, sans API applicative).
+api = [
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.32,<1",
+    "pydantic>=2,<3",
+    "sqlalchemy>=2,<3",
+    "alembic>=1.13,<2",
+    "psycopg[binary]>=3.2,<4",
+    "cryptography>=50,<51",
+    # MCP (§4 du contrat, tâche 18) : serveur in-process monté sous /mcp
+    # (streamable HTTP) — mcp 2.x (``mcp.server.mcpserver.MCPServer``,
+    # FastMCP renommé). httpx sert de client interne (transport ASGI,
+    # zéro réseau) entre les outils MCP et les routes /v2 (voir
+    # v2/mcp_server.py) et de client HTTP pour la CLI (``quadringent``).
+    "mcp>=2.2,<3",
+    "httpx>=0.27,<1",
+    # OIDC optionnel (tâche 10, §6.2) : vérification de l'id_token (RS256,
+    # JWKS) — pas de dépendance native supplémentaire (PyJWT pur Python,
+    # s'appuie sur ``cryptography`` déjà présent ci-dessus).
+    "PyJWT>=2.9,<3",
+]
+
+[project.scripts]
+quadringent-control-plane = "quadringent_control_plane.cli:main"
+quadringent-cost-collect = "quadringent.cost_collect:main"
+quadringent = "quadringent.installer.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["quadringent", "quadringent.*", "quadringent_control_plane", "quadringent_control_plane.*"]
+# `quadringent_qualification` (chantier 7, harnais de qualification bout en
+# bout) est déclaré sous src/ et importable via testpaths/pythonpath
+# ci-dessous, mais volontairement absent de cette liste `include` : ce n'est
+# pas une dépendance runtime du produit, il ne doit donc pas être empaqueté
+# dans le wheel d'exécution. Invocation : `python -m quadringent_qualification.cli`.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "scripts", "tests", "research", "research/scripts"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["F821", "F822", "F823"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+check_untyped_defs = true
+# Typage progressif : seules les cibles explicites bloquent cette première gate.
+follow_imports = "silent"
+files = ["src/quadringent_control_plane/version.py"]

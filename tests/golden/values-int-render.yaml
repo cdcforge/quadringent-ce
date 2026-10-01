@@ -1,0 +1,667 @@
+---
+# Source: quadringent/templates/control-plane.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cdcforge-control-plane
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::000000000000:role/example-platform-int-cdcforge-control-plane"
+    quadringent.io/environment: dev
+    quadringent.io/production-promotion: forbidden
+  labels:
+    app.kubernetes.io/name: quadringent
+    app.kubernetes.io/instance: cdc
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/version: "0.2.3"
+    app.kubernetes.io/component: control-plane
+automountServiceAccountToken: false
+---
+# Source: quadringent/templates/configmap-site.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cdc-quadringent-site
+  annotations:
+    quadringent.io/environment: dev
+    quadringent.io/production-promotion: forbidden
+  labels:
+    app.kubernetes.io/name: quadringent
+    app.kubernetes.io/instance: cdc
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/version: "0.2.3"
+data:
+  QUADRINGENT_ENVIRONMENT: "dev"
+  QUADRINGENT_COST_NAMESPACE: "quadringent-demo"
+  QUADRINGENT_SITE_ID: "example-corp"
+  QUADRINGENT_STORAGE_BACKEND: "aws"
+  QUADRINGENT_AWS_ACCOUNT_ID: "000000000000"
+  QUADRINGENT_AWS_REGION: "eu-west-3"
+  QUADRINGENT_RAW_BUCKET: "example-corp-000000000000-int-example-corp-raw"
+  QUADRINGENT_RAW_PREFIX_ROOT: "as400/sales"
+  QUADRINGENT_CHECKPOINT_TABLE: "example-corp-int-example-corp-checkpoints"
+  QUADRINGENT_SOURCE_SCHEMA: "SALES"
+  QUADRINGENT_PROOF_TABLE: "SALE"
+  QUADRINGENT_JOURNAL_NAME: "DEMOJRN"
+  QUADRINGENT_DESTINATION_DATABASE: "DEV_RAW"
+  QUADRINGENT_DESTINATION_SCHEMA: "AS400_RD"
+  QUADRINGENT_DESTINATION_ID: "snowflake-dev-rd"
+  QUADRINGENT_IBMI_TLS_CA_FILE: "/app/certs/ibmi-ca.pem"
+  QUADRINGENT_SNOWFLAKE_ACCOUNT: "EXAMPLE-EXAMPLE_CORP"
+  QUADRINGENT_IBMI_HOST: "192.0.2.10"
+  QUADRINGENT_IBMI_USER: "CDCUSER"
+  QUADRINGENT_IBMI_PASSWORD_SECRET: "example-corp-ibmi"
+  QUADRINGENT_IBMI_PASSWORD_KEY: "ISERIES_PASSWORD"
+  QUADRINGENT_FLEET_TABLES: "ADDRS1,CAL001,COST1,CUSTOM1,ORDER,EXPENS,DATE01,SALE,PLACE01,PLACES,CNTR,PRODUCT,HOLIDAYS"
+  QUADRINGENT_KEYED_TABLES: "ADDRS1,CAL001,CUSTOM1,ORDER,SALE"
+  QUADRINGENT_PROVISIONED_STAGES: "SALE"
+  QUADRINGENT_PROOF_KEY_COLUMNS: "SDOM,SCOD,SSEQ,SORD,STYP,SDISC,SDATE"
+  QUADRINGENT_FORBIDDEN_FRAGMENTS: "OTHER_SCHEMA,POPSINK"
+  QUADRINGENT_SNOWFLAKE_CONNECTION: "example-corp-dev"
+  QUADRINGENT_AWS_PROFILE: "example-corp-dev"
+  QUADRINGENT_AUTONOMOUS_PROOF_NAME: "cdcforge-autonomous-latest.json"
+  QUADRINGENT_DESTINATION_PREFIX: "CDC_FORGE"
+  QUADRINGENT_DESTINATION_MODE: "copy_merge"
+---
+# Source: quadringent/templates/configmap-tuning.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cdc-quadringent-tuning
+  labels:
+    app.kubernetes.io/name: quadringent
+    app.kubernetes.io/instance: cdc
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/version: "0.2.3"
+data:
+  # IBM i — aucun secret ici, le mot de passe passe par secretKeyRef
+  ISERIES_HOST: "192.0.2.10"
+  ISERIES_USER: "CDCUSER"
+  ISERIES_SCHEMA: "SALES"
+  ISERIES_TABLE: "SALE"
+  AS400_JOURNAL_LIBRARY: "DEMOLIB"
+  AS400_JOURNAL_NAME: "DEMOJRN"
+  AS400_SOURCE_TIME_ZONE: "Europe/Zurich"
+  AS400_TLS: "true"
+  AS400_ALLOW_PLAINTEXT: "false"
+  AS400_TLS_CA_FILE: "/app/certs/ibmi-ca.pem"
+  AS400_CONSOLE_SNAPSHOT_S3_KEY: "as400/sales/sale/console-snapshot.json"
+
+  # Réglages validés par le soak du 2026-08-27
+  AS400_BATCH_ENTRIES: "60000"
+  ISERIES_MAX_DECODED_ENTRIES: "70000"
+  # Helm normalise parfois les grands scalaires YAML en notation scientifique ;
+  # le runtime attend volontairement un entier décimal strict.
+  ISERIES_JOURNAL_BUFFER_SIZE: "16000000"
+  AS400_READER_TIMEOUT_SECONDS: "15"
+  AS400_RETRIEVE_TIMEOUT_MS: "14000"
+  AS400_MORE_DATA_TIMEOUT_MS: "3000"
+  AS400_FINAL_POSITION_TIMEOUT_MS: "2000"
+  AS400_POLL_SECONDS: "2"
+  AS400_MIN_POLL_SECONDS: "1"
+  AS400_TAIL_PROBE: "true"
+  AS400_EMPTY_PROBE: "1"
+  AS400_CATALOG_QUERY_TIMEOUT_SECONDS: "8"
+  AS400_RECEIVER_METADATA_LIMIT: "8"
+  AS400_RECEIVER_CATALOG_CACHE_POLLS: "30"
+  AS400_RECEIVER_CATALOG_CACHE_SECONDS: "60"
+  AS400_RECEIVER_CATALOG_MAX_STALE: "5"
+  AS400_CATCH_UP_BATCH_ENTRIES: "2000"
+  AS400_CATCH_UP_DIVISOR: "10"
+
+  # Stockage
+  QUADRINGENT_STORAGE_BACKEND: "aws"
+  AS400_RAW_BUCKET: "example-corp-000000000000-int-example-corp-raw"
+  AS400_RAW_PREFIX: "as400/sales/sale"
+  AS400_STREAM_KEY: "as400/sales/sale"
+  AS400_CHECKPOINT_TABLE: "example-corp-int-example-corp-checkpoints"
+  AWS_REGION: "eu-west-3"
+  AWS_DEFAULT_REGION: "eu-west-3"
+---
+# Source: quadringent/templates/observability-cronjob.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cdc-quadringent-observe
+  namespace: quadringent-demo
+  labels:
+    app.kubernetes.io/name: quadringent
+    app.kubernetes.io/instance: cdc
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/version: "0.2.3"
+data:
+  policy.json: "{\"capture_freshness_seconds\":120,\"checkpoint_lag_sequences\":1000,\"delivery_latency_p95_seconds\":60,\"delivery_latency_p99_seconds\":180,\"destination_freshness_seconds\":300,\"observability_freshness_seconds\":900,\"s3_freshness_seconds\":180,\"s3_requests_24h\":500000,\"snowflake_credits_24h\":1,\"snowpipe_pending_files\":10}"
+---
+# Source: quadringent/templates/control-plane.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cdc-quadringent-control-plane
+  annotations:
+    quadringent.io/environment: dev
+    quadringent.io/production-promotion: forbidden
+  labels:
+    app.kubernetes.io/name: quadringent
+    app.kubernetes.io/instance: cdc
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/version: "0.2.3"
+    app.kubernetes.io/component: control-plane
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: quadringent
+      app.kubernetes.io/instance: cdc
+      app.kubernetes.io/component: control-plane
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: quadringent
+        app.kubernetes.io/instance: cdc
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/version: "0.2.3"
+        app.kubernetes.io/component: control-plane
+    spec:
+      serviceAccountName: cdcforge-control-plane
+      automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: quadringent-registry
+      nodeSelector:
+        workload: popsink
+      tolerations:
+        - effect: NoSchedule
+          key: dedicated
+          operator: Equal
+          value: popsink
+      containers:
+        - name: control-plane
+          image: ghcr.io/quadringent/quadringent@sha256:91f87c4757f4ae1cf09f91dad593926178016c14f3d6edb709ba03319d0b286d
+          imagePullPolicy: IfNotPresent
+          command:
+            - python
+            - /app/quadringent_control_plane.py
+          args:
+            - --ui-dist
+            - /app/ui
+            - --source
+            - "live:example-corp:s3://example-corp-000000000000-int-example-corp-raw/as400/sales/fleet/console-proof.json"
+            - --environment
+            - "dev"
+            - --host
+            - "127.0.0.1"
+            - --port
+            - "8844"
+            - --refresh-seconds
+            - "2"
+          envFrom:
+            - configMapRef:
+                name: cdc-quadringent-site
+          env:
+            - name: AWS_REGION
+              value: "eu-west-3"
+            - name: AWS_DEFAULT_REGION
+              value: "eu-west-3"
+            - name: QUADRINGENT_VERSION
+              value: "0.2.3"
+          readinessProbe:
+            exec:
+              command:
+                - python
+                - -S
+                - /app/quadringent_healthcheck.py
+                - "8844"
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -S
+                - /app/quadringent_healthcheck.py
+                - "8844"
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 20m
+              memory: 96Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            capabilities:
+              drop: ["ALL"]
+---
+# Source: quadringent/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cdc-quadringent
+  annotations:
+    quadringent.io/environment: dev
+    quadringent.io/production-promotion: forbidden
+  labels:
+    app.kubernetes.io/name: quadringent
+    app.kubernetes.io/instance: cdc
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/version: "0.2.3"
+spec:
+  replicas: 0
+  strategy:
+    type: Recreate          # jamais deux lecteurs en même temps, même le temps d'un rollout
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: quadringent
+      app.kubernetes.io/instance: cdc
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: quadringent
+        app.kubernetes.io/instance: cdc
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/version: "0.2.3"
+    spec:
+      serviceAccountName: as400-snowflake-capture
+      imagePullSecrets:
+        - name: quadringent-registry
+      nodeSelector:
+        workload: popsink
+      tolerations:
+        - effect: NoSchedule
+          key: dedicated
+          operator: Equal
+          value: popsink
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  ppsk/strategy: ibmi-to-kafka
+              namespaces:
+                - popsink
+              topologyKey: kubernetes.io/hostname
+      volumes:
+        - name: ibmi-ca
+          secret:
+            secretName: "quadringent-ibmi-ca"
+            items:
+              - key: "ca.crt"
+                path: "ibmi-ca.pem"
+      containers:
+        - name: capture
+          image: ghcr.io/quadringent/quadringent@sha256:22089a7e7c78f026e396258da8b7dc0be3e6421a79066998c4e1df3a5e4d7190
+          imagePullPolicy: IfNotPresent
+          args:
+            - --metrics-interval-seconds
+            - "60"
+            - --max-consecutive-errors
+            - "3"
+            - --console-snapshot-interval-seconds
+            - "10"
+          envFrom:
+            - configMapRef:
+                name: cdc-quadringent-tuning
+            - configMapRef:
+                name: cdc-quadringent-site
+          env:
+            - name: ISERIES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: example-corp-ibmi
+                  key: ISERIES_PASSWORD
+          volumeMounts:
+            - name: ibmi-ca
+              mountPath: "/app/certs"
+              readOnly: true
+          resources:
+            limits:
+              cpu: "1"
+              memory: 2Gi
+            requests:
+              cpu: 50m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            # Docker USER porte un nom ; kubelet exige un UID explicite pour
+            # certifier runAsNonRoot avant même de démarrer le conteneur.
+            runAsUser: 10001
+            runAsGroup: 10001
+            capabilities:
+              drop: ["ALL"]
+          # Le lecteur n'expose aucun endpoint et n'écrit aucun heartbeat local :
+          # le snapshot console part en S3. La readiness vérifie donc que le
+          # processus python de capture et son worker JVM vivent — la sonde
+          # exclut son propre pid pour ne pas s'attester elle-même ; la
+          # liveness mesure la progression CPU du worker JVM dans /proc — une
+          # JVM gelée n'y consomme plus rien et finit par dépasser le seuil
+          # interne de 240 s, là où un pgrep verrait encore un processus
+          # « vivant ».
+          readinessProbe:
+            exec:
+              command:
+                - /opt/venv/bin/python
+                - -S
+                - -c
+                - |
+                  import glob, os, sys
+                  self_pid = os.getpid()
+                  worker = jvm = False
+                  for path in glob.glob("/proc/[0-9]*/comm"):
+                      pid = int(path.split("/")[2])
+                      if pid == self_pid:
+                          continue
+                      try:
+                          with open(path) as handle:
+                              comm = handle.read().strip()
+                      except OSError:
+                          continue
+                      if comm == "java":
+                          jvm = True
+                      elif comm.startswith("python"):
+                          # Seul le lecteur python atteste la readiness : un
+                          # autre probe concurrent ne doit pas se prendre
+                          # pour le worker.
+                          try:
+                              with open("/proc/%d/cmdline" % pid, "rb") as handle:
+                                  cmdline = handle.read()
+                          except OSError:
+                              continue
+                          if b"as400_continuous_capture" in cmdline:
+                              worker = True
+                  sys.exit(0 if worker and jvm else 1)
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - /opt/venv/bin/python
+                - -S
+                - -c
+                - |
+                  import glob, json, os, sys, time
+                  STALE_SECONDS = 240.0
+                  STATE = "/tmp/quadringent-capture-live.json"
+                  self_pid = os.getpid()
+                  ticks = 0
+                  for path in glob.glob("/proc/[0-9]*/stat"):
+                      pid = int(path.split("/")[2])
+                      if pid == self_pid:
+                          continue
+                      try:
+                          with open(path) as handle:
+                              raw = handle.read()
+                          # Seul le worker JVM compte : la sonde elle-même et
+                          # le lecteur python consomment des ticks sans jamais
+                          # prouver que le lecteur JVM progresse.
+                          comm = raw[raw.index("(") + 1:raw.rindex(")")]
+                          if comm != "java":
+                              continue
+                          fields = raw.rsplit(")", 1)[-1].split()
+                          ticks += int(fields[11]) + int(fields[12])
+                      except (OSError, IndexError, ValueError):
+                          continue
+                  if ticks <= 0:
+                      sys.exit(1)
+                  now = time.time()
+                  try:
+                      with open(STATE) as handle:
+                          previous = json.load(handle)
+                  except (OSError, ValueError):
+                      previous = {}
+                  if previous.get("ticks") != ticks:
+                      previous = {"ticks": ticks, "since": now}
+                  elif now - float(previous.get("since", now)) > STALE_SECONDS:
+                      sys.exit(1)
+                  try:
+                      with open(STATE, "w") as handle:
+                          json.dump(previous, handle)
+                  except OSError:
+                      pass
+                  sys.exit(0)
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+---
+# Source: quadringent/templates/fleet-observe-cronjob.yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cdc-quadringent-fleet-observe
+  namespace: quadringent-demo
+  labels:
+    app.kubernetes.io/name: quadringent
+    app.kubernetes.io/instance: cdc
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/version: "0.2.3"
+spec:
+  schedule: "*/4 * * * *"
+  timeZone: Etc/UTC
+  suspend: false
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 120
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 300
+      backoffLimit: 0
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: fleet-observability
+        spec:
+          serviceAccountName: cdcforge-verifier
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          nodeSelector:
+            kubernetes.io/arch: amd64
+          imagePullSecrets:
+            - name: quadringent-registry
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: observer
+              image: "ghcr.io/quadringent/quadringent@sha256:916e91ab71c973ba255a7c78cb40668a6344dffc43e9e18eca854789dab6b730"
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  # Mesure la livraison Snowflake des voies déclarées et
+                  # publie la preuve combinée sur la clé dédiée
+                  # fleet/console-proof.json — le snapshot du lecteur n'est
+                  # jamais modifié (une clé, un écrivain).
+                  python /app/scripts/quadringent_fleet_observe.py \
+                    --aws-default-credentials \
+                    --snowflake-oidc-token-file /var/run/secrets/snowflake/token \
+                    --manifest-budget 1500 \
+                    --execute
+              envFrom:
+                - configMapRef:
+                    name: cdc-quadringent-site
+              env:
+                - name: AWS_EC2_METADATA_DISABLED
+                  value: "true"
+                - name: AWS_DEFAULT_REGION
+                  value: "eu-west-3"
+                - name: AWS_STS_REGIONAL_ENDPOINTS
+                  value: regional
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 192Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+              volumeMounts:
+                - name: snowflake-identity
+                  mountPath: /var/run/secrets/snowflake
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: snowflake-identity
+              projected:
+                defaultMode: 0440
+                sources:
+                  - serviceAccountToken:
+                      audience: snowflakecomputing.com
+                      expirationSeconds: 600
+                      path: token
+            - name: tmp
+              emptyDir:
+                sizeLimit: 16Mi
+---
+# Source: quadringent/templates/observability-cronjob.yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cdc-quadringent-observe
+  namespace: quadringent-demo
+  labels:
+    app.kubernetes.io/name: quadringent
+    app.kubernetes.io/instance: cdc
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/version: "0.2.3"
+spec:
+  schedule: "*/15 * * * *"
+  timeZone: Etc/UTC
+  suspend: false
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 120
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 600
+      backoffLimit: 0
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: observability
+        spec:
+          serviceAccountName: cdcforge-verifier
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          nodeSelector:
+            kubernetes.io/arch: amd64
+          imagePullSecrets:
+            - name: quadringent-registry
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: observer
+              image: "ghcr.io/quadringent/quadringent@sha256:916e91ab71c973ba255a7c78cb40668a6344dffc43e9e18eca854789dab6b730"
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  python /app/scripts/quadringent_observability_refresh.py \
+                    --policy /etc/quadringent-slo/policy.json \
+                    --out /work/observation.json \
+                    --aws-default-credentials \
+                    --snowflake-oidc-token-file /var/run/secrets/snowflake/token \
+                    --publish-confirm "REFRESH_AS400_RD_OBSERVABILITY_DEV"
+                  # Le rapport SLO est le bloc slo_report de la preuve combinée :
+                  # une observation sans rapport refuse de continuer.
+                  python -c 'import json, sys
+                  document = json.load(open("/work/observation.json"))
+                  report = document.get("observability", {}).get("slo_report")
+                  if not isinstance(report, dict):
+                      sys.exit("observation without an SLO report")
+                  open("/work/slo-report.json", "w").write(json.dumps(report))'
+                  if [ -n "${QUADRINGENT_ALERT_WEBHOOK_URL:-}${QUADRINGENT_ALERT_SNS_TOPIC:-}" ]; then
+                    python /app/scripts/quadringent_slo_alerts.py \
+                      --report /work/slo-report.json \
+                      --state /work/slo-alert-state.json \
+                      --observability-snapshot /work/observation.json
+                  else
+                    # Sans destination déclarée, la réconciliation reste
+                    # silencieuse : le CronJob n'échoue jamais sur l'état
+                    # d'alerte, et le code de sortie ne propage rien.
+                    python /app/scripts/quadringent_slo_alerts.py \
+                      --report /work/slo-report.json \
+                      --state /work/slo-alert-state.json \
+                      --observability-snapshot /work/observation.json || true
+                  fi
+              envFrom:
+                - configMapRef:
+                    name: cdc-quadringent-site
+              env:
+                - name: AWS_EC2_METADATA_DISABLED
+                  value: "true"
+                - name: AWS_DEFAULT_REGION
+                  value: "eu-west-3"
+                - name: AWS_STS_REGIONAL_ENDPOINTS
+                  value: regional
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 192Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+              volumeMounts:
+                - name: policy
+                  mountPath: /etc/quadringent-slo
+                  readOnly: true
+                - name: snowflake-identity
+                  mountPath: /var/run/secrets/snowflake
+                  readOnly: true
+                - name: work
+                  mountPath: /work
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: policy
+              configMap:
+                name: cdc-quadringent-observe
+                defaultMode: 0444
+            - name: snowflake-identity
+              projected:
+                defaultMode: 0440
+                sources:
+                  - serviceAccountToken:
+                      audience: snowflakecomputing.com
+                      expirationSeconds: 600
+                      path: token
+            - name: work
+              emptyDir:
+                sizeLimit: 16Mi
+            - name: tmp
+              emptyDir:
+                sizeLimit: 16Mi

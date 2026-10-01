@@ -1,0 +1,36 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListApprovedRawPrefixes",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetBucketLocation",
+        "s3:ListBucket"
+      ],
+      "Resource": "arn:aws:s3:::example-corp-000000000000-int-example-corp-raw",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "as400/sales/cntr/",
+            "as400/sales/cntr/*",
+            "as400/sales/sale/",
+            "as400/sales/sale/*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "ReadApprovedRawObjects",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:GetObjectVersion"
+      ],
+      "Resource": [
+        "arn:aws:s3:::example-corp-000000000000-int-example-corp-raw/as400/sales/cntr/*",
+        "arn:aws:s3:::example-corp-000000000000-int-example-corp-raw/as400/sales/sale/*"
+      ]
+    }
+  ]
+}

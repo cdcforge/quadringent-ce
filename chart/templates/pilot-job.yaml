@@ -1,0 +1,248 @@
+{{- if .Values.pilot.enabled }}
+{{ include "quadringent.siteGuards" . }}
+{{- $site := .Values.site }}
+{{- if empty .Values.pilot.runId }}
+{{- fail "pilot.runId est obligatoire lorsque pilot.enabled=true" }}
+{{- end }}
+{{- $runId := toString .Values.pilot.runId }}
+{{- $jobName := printf "%s-pilot-%s" (include "quadringent.fullname" .) $runId }}
+{{- if or (not (regexMatch "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$" $runId)) (gt (len $jobName) 63) }}
+{{- fail "pilot.runId doit être un identifiant DNS minuscule avec un nom de Job de 63 caractères maximum" }}
+{{- end }}
+{{- $runPrefix := printf "%s/runs/%s" (trimSuffix "/" .Values.storage.rawPrefix) $runId }}
+{{- $chain := hasKey .Values.pilot.proofWindow "count" }}
+{{- if and $chain (not .Values.pilot.proofWindow.enabled) }}
+{{- fail "pilot.proofWindow.count exige proofWindow.enabled=true" }}
+{{- end }}
+{{- if .Values.pilot.proofWindow.enabled }}
+{{- $minimumWindowBudget := add (int .Values.pilot.proofWindow.seconds) (int (ceil (float64 .Values.tuning.readerTimeoutSeconds))) 60 }}
+{{- if $chain }}
+{{- if or (not (regexMatch "^[0-9]+$" (toString .Values.pilot.proofWindow.count))) (lt (int .Values.pilot.proofWindow.count) 1) (gt (int .Values.pilot.proofWindow.count) 128) }}
+{{- fail "pilot.proofWindow.count exige un entier 1..128" }}
+{{- end }}
+{{- $minimumWindowBudget = add (mul (int .Values.pilot.proofWindow.count) (add (int .Values.pilot.proofWindow.seconds) 60)) (int (ceil (float64 .Values.tuning.readerTimeoutSeconds))) 1 }}
+{{- end }}
+{{- if ne .Values.bootstrap.mode "checkpoint" }}
+{{- fail "pilot.proofWindow exige checkpoint" }}
+{{- end }}
+{{- /* La fenêtre de preuve n'existe que sur la voie déclarée du site : le
+  câblage d'exécution doit être exactement l'identité site. */ -}}
+{{- if or (ne .Values.ibmi.host $site.ibmiHost) (ne .Values.ibmi.user $site.ibmiUser) (ne .Values.ibmi.schema $site.sourceSchema) (ne .Values.ibmi.table $site.proofTable) (ne .Values.ibmi.journalName $site.journalName) (ne .Values.storage.rawBucket $site.rawBucket) (ne .Values.storage.rawPrefix (printf "%s/%s" $site.rawPrefixRoot (lower $site.proofTable))) (ne .Values.storage.checkpointTable $site.checkpointTable) }}
+{{- fail "pilot.proofWindow exige la source et le stockage exacts du site déclaré" }}
+{{- end }}
+{{- if or (not (regexMatch "^[0-9]+$" (toString .Values.pilot.proofWindow.seconds))) (not (regexMatch "^[0-9]+$" (toString .Values.pilot.maxSeconds))) (not (regexMatch "^[a-z0-9][a-z0-9-]{0,79}$" (toString .Values.pilot.proofWindow.id))) (lt (int .Values.pilot.proofWindow.seconds) 600) (gt (int .Values.pilot.proofWindow.seconds) 3600) (lt (int .Values.pilot.maxSeconds) $minimumWindowBudget) }}
+{{- fail "pilot.proofWindow exige une durée 600..3600 et maxSeconds >= durée + réserve lecteur + 60s de fermeture" }}
+{{- end }}
+{{- end }}
+{{- if le (int .Values.pilot.maxPolls) 0 }}
+{{- fail "pilot.maxPolls doit être > 0" }}
+{{- end }}
+{{- if le (int .Values.pilot.maxSeconds) 0 }}
+{{- fail "pilot.maxSeconds doit être > 0" }}
+{{- end }}
+{{- if or (not (regexMatch "^[0-9]+$" (toString .Values.pilot.shutdownMarginSeconds))) (le (int .Values.pilot.shutdownMarginSeconds) 0) (ge (int .Values.pilot.shutdownMarginSeconds) (int .Values.pilot.maxSeconds)) }}
+{{- fail "pilot.shutdownMarginSeconds doit être un entier > 0 et < pilot.maxSeconds" }}
+{{- end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $jobName }}
+  annotations:
+    quadringent.io/environment: {{ .Values.deployment.environment }}
+    quadringent.io/production-promotion: forbidden
+  labels:
+    {{- include "quadringent.labels" . | nindent 4 }}
+    quadringent.io/purpose: coexistence-pilot
+    quadringent.io/run: {{ .Values.pilot.runId | quote }}
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: {{ add (int .Values.pilot.maxSeconds) (int .Values.pilot.shutdownMarginSeconds) }}
+  ttlSecondsAfterFinished: {{ .Values.pilot.ttlSecondsAfterFinished }}
+  template:
+    metadata:
+      labels:
+        {{- include "quadringent.labels" . | nindent 8 }}
+        quadringent.io/purpose: coexistence-pilot
+        quadringent.io/run: {{ .Values.pilot.runId | quote }}
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ required "serviceAccount.name est obligatoire" .Values.serviceAccount.name }}
+      {{- with .Values.image.pullSecret }}
+      imagePullSecrets:
+        - name: {{ . }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.podAntiAffinity.enabled }}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  {{- toYaml .Values.podAntiAffinity.matchLabels | nindent 18 }}
+              namespaces:
+                {{- toYaml .Values.podAntiAffinity.namespaces | nindent 16 }}
+              topologyKey: kubernetes.io/hostname
+      {{- end }}
+      volumes:
+        {{- include "quadringent.caVolume" . | nindent 8 }}
+      containers:
+        - name: capture
+          image: {{ include "quadringent.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            {{- if .Values.pilot.proofWindow.enabled }}
+            - --proof-window-id
+            - {{ .Values.pilot.proofWindow.id | quote }}
+            - --proof-window-seconds
+            - {{ .Values.pilot.proofWindow.seconds | quote }}
+            {{- if $chain }}
+            - --proof-window-count
+            - {{ .Values.pilot.proofWindow.count | quote }}
+            {{- end }}
+            {{- end }}
+            - --reserve-run-id
+            - {{ $runId | quote }}
+            - --max-polls
+            - {{ .Values.pilot.maxPolls | quote }}
+            - --max-seconds
+            - {{ .Values.pilot.maxSeconds | quote }}
+            - --metrics-interval-seconds
+            - {{ .Values.tuning.metricsIntervalSeconds | quote }}
+            - --max-consecutive-errors
+            - {{ .Values.safety.maxConsecutiveErrors | quote }}
+            {{- if .Values.consoleSnapshot.enabled }}
+            - --console-snapshot-interval-seconds
+            - {{ .Values.consoleSnapshot.intervalSeconds | quote }}
+            {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "quadringent.fullname" . }}-tuning
+            - configMapRef:
+                name: {{ include "quadringent.fullname" . }}-site
+          env:
+            # Per-Job overrides keep the permanent Deployment's paths intact.
+            - name: AS400_RAW_PREFIX
+              value: {{ $runPrefix | quote }}
+            {{- if .Values.consoleSnapshot.enabled }}
+            - name: AS400_CONSOLE_SNAPSHOT_S3_KEY
+              value: {{ printf "%s/console-snapshot.json" $runPrefix | quote }}
+            {{- end }}
+            - name: ISERIES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "ibmi.passwordSecret.name est obligatoire" .Values.ibmi.passwordSecret.name }}
+                  key: {{ required "ibmi.passwordSecret.key est obligatoire" .Values.ibmi.passwordSecret.key }}
+          volumeMounts:
+            {{- include "quadringent.caMount" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            capabilities:
+              drop: ["ALL"]
+          # Même signal que le Deployment : le worker n'expose rien et écrit
+          # son état en S3. La readiness atteste que le processus python de
+          # capture et son worker JVM tournent réellement — la sonde exclut
+          # son propre pid pour ne pas s'attester elle-même. La liveness
+          # mesure la progression CPU du worker JVM dans /proc : un pilote
+          # gelé est tué au lieu de consumer son budget de 2 h sans produire.
+          readinessProbe:
+            exec:
+              command:
+                - /opt/venv/bin/python
+                - -S
+                - -c
+                - |
+                  import glob, os, sys
+                  self_pid = os.getpid()
+                  worker = jvm = False
+                  for path in glob.glob("/proc/[0-9]*/comm"):
+                      pid = int(path.split("/")[2])
+                      if pid == self_pid:
+                          continue
+                      try:
+                          with open(path) as handle:
+                              comm = handle.read().strip()
+                      except OSError:
+                          continue
+                      if comm == "java":
+                          jvm = True
+                      elif comm.startswith("python"):
+                          # Seul le lecteur python atteste la readiness : un
+                          # autre probe concurrent ne doit pas se prendre
+                          # pour le worker.
+                          try:
+                              with open("/proc/%d/cmdline" % pid, "rb") as handle:
+                                  cmdline = handle.read()
+                          except OSError:
+                              continue
+                          if b"as400_continuous_capture" in cmdline:
+                              worker = True
+                  sys.exit(0 if worker and jvm else 1)
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - /opt/venv/bin/python
+                - -S
+                - -c
+                - |
+                  import glob, json, os, sys, time
+                  STALE_SECONDS = 240.0
+                  STATE = "/tmp/quadringent-capture-live.json"
+                  self_pid = os.getpid()
+                  ticks = 0
+                  for path in glob.glob("/proc/[0-9]*/stat"):
+                      pid = int(path.split("/")[2])
+                      if pid == self_pid:
+                          continue
+                      try:
+                          with open(path) as handle:
+                              raw = handle.read()
+                          # Seul le worker JVM compte : la sonde elle-même et
+                          # le lecteur python consomment des ticks sans jamais
+                          # prouver que le lecteur JVM progresse.
+                          comm = raw[raw.index("(") + 1:raw.rindex(")")]
+                          if comm != "java":
+                              continue
+                          fields = raw.rsplit(")", 1)[-1].split()
+                          ticks += int(fields[11]) + int(fields[12])
+                      except (OSError, IndexError, ValueError):
+                          continue
+                  if ticks <= 0:
+                      sys.exit(1)
+                  now = time.time()
+                  try:
+                      with open(STATE) as handle:
+                          previous = json.load(handle)
+                  except (OSError, ValueError):
+                      previous = {}
+                  if previous.get("ticks") != ticks:
+                      previous = {"ticks": ticks, "since": now}
+                  elif now - float(previous.get("since", now)) > STALE_SECONDS:
+                      sys.exit(1)
+                  try:
+                      with open(STATE, "w") as handle:
+                          json.dump(previous, handle)
+                  except OSError:
+                      pass
+                  sys.exit(0)
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+{{- end }}

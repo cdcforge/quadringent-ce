@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://quadringent.io/schemas/release-manifest.json",
+  "title": "Manifeste de version quadringent install",
+  "description": "Dépôt et digests immuables des images consommées par `quadringent install` (lecteur/capture, control plane, vérificateur, observabilité optionnelle). `quadringent install` refuse tout tag mouvant : chaque image est identifiée par son digest sha256, jamais par un tag (`latest`, `v1.2.3`, ...). Un site avec un registre privé fournit son propre fichier via `--release-manifest`, éventuellement combiné à `--image-repository` pour réécrire le dépôt sans toucher aux digests.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["imageDigest", "controlPlaneImageDigest", "verifierImageDigest", "observabilityImageDigest"],
+  "properties": {
+    "_comment": {
+      "type": "string",
+      "description": "Note libre, ignorée par le chargeur (ex. avertissement gabarit vs manifeste réel)."
+    },
+    "repository": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Dépôt d'images (ex. ghcr.io/quadringent/quadringent ou registre privé du site). Absent ou vide : repli sur ghcr.io/quadringent/quadringent, sauf si --image-repository est fourni à l'installateur."
+    },
+    "imageDigest": {
+      "$ref": "#/definitions/digest",
+      "description": "Digest de l'image lecteur/capture (image.digest de la chart)."
+    },
+    "controlPlaneImageDigest": {
+      "$ref": "#/definitions/digest",
+      "description": "Digest de l'image control plane (controlPlane.image.digest de la chart)."
+    },
+    "verifierImageDigest": {
+      "$ref": "#/definitions/digest",
+      "description": "Digest de l'image du Job verifier (verification.imageDigest de la chart)."
+    },
+    "observabilityImageDigest": {
+      "$ref": "#/definitions/digest",
+      "description": "Digest de l'image du CronJob d'observabilité (observability.imageDigest de la chart). Optionnel : seulement requis si le site active observability."
+    }
+  },
+  "definitions": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "Digest d'image immuable (sha256:<64 hex>). Jamais de tag mouvant."
+    }
+  }
+}

@@ -1,0 +1,29 @@
+__pycache__/
+*.pyc
+.venv/
+target/
+*.class
+.DS_Store
+node_modules/
+ui/dist/
+*.tsbuildinfo
+.worktrees/
+
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+.local-state/
+
+# Terraform : état, plans et cache provider locaux jamais versionnés.
+# Les fichiers .terraform.lock.hcl restent versionnés (verrouillage provider).
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+*.tfvars.json

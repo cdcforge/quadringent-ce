@@ -1,0 +1,5 @@
+boto3==1.43.84
+# Correctifs TLS proxy et lecture chunked : CVE-2026-97687 / CVE-2026-97689.
+urllib3==2.8.0
+snowflake-connector-python==4.7.3
+PyJWT==2.14.0

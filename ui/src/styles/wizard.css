@@ -1,0 +1,186 @@
+/* Assistant de connexion v2 — sobre, aéré, une seule action primaire par
+ * écran. Réutilise les jetons de fondation (product-tokens.css) : IBM Plex
+ * Sans pour le texte, IBM Plex Mono pour les valeurs/identifiants. */
+
+.wizard {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: var(--space-6, 32px) var(--space-4, 16px) 96px;
+  font-family: var(--font-sans);
+  color: var(--ink-1);
+}
+
+.wizard__kicker {
+  font-size: var(--t-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  margin: 0 0 var(--space-1, 4px);
+}
+
+.wizard__title {
+  font-size: 1.5rem;
+  font-weight: var(--w-medium, 500);
+  margin: 0 0 var(--space-2, 8px);
+}
+
+.wizard__lead {
+  color: var(--ink-2);
+  margin: 0 0 var(--space-6, 32px);
+}
+
+.wizard__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  margin: 0 0 var(--space-4, 16px);
+}
+
+.wizard__field label {
+  font-weight: var(--w-medium, 500);
+}
+
+.wizard__field input {
+  font-family: var(--font-mono);
+  padding: var(--space-2, 8px);
+  border: 1px solid var(--ink-4);
+  border-radius: var(--radius-panel);
+  background: var(--surface-canvas, #fff);
+  color: var(--ink-1);
+}
+
+.wizard__field input[aria-invalid="true"] {
+  border-color: var(--signal-incident);
+}
+
+.wizard__field-error {
+  color: var(--signal-incident);
+  font-size: var(--t-micro);
+}
+
+.wizard__advanced {
+  margin: 0 0 var(--space-4, 16px);
+}
+
+.wizard__check-list {
+  list-style: none;
+  margin: var(--space-4, 16px) 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.wizard-check-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2, 8px);
+}
+
+.wizard-check-line__mark {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.wizard-check-line--ok .wizard-check-line__mark { background: var(--signal-live); }
+.wizard-check-line--attention .wizard-check-line__mark { background: var(--signal-attention); }
+.wizard-check-line--failed .wizard-check-line__mark { background: var(--signal-incident); }
+.wizard-check-line--unknown .wizard-check-line__mark { background: var(--ink-4); }
+
+.wizard-check-line--ok .wizard-check-line__label { color: var(--signal-live); }
+.wizard-check-line--attention .wizard-check-line__label { color: var(--signal-attention); }
+.wizard-check-line--failed .wizard-check-line__label { color: var(--signal-incident); }
+
+.wizard__script {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  background: var(--surface-quiet);
+  border: 1px solid var(--ink-4);
+  border-radius: var(--radius-panel);
+  padding: var(--space-3, 12px);
+  white-space: pre-wrap;
+  overflow-x: auto;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.wizard__script-actions {
+  display: flex;
+  gap: var(--space-2, 8px);
+  margin: var(--space-2, 8px) 0 var(--space-4, 16px);
+}
+
+.wizard__search {
+  width: 100%;
+  padding: var(--space-2, 8px);
+  border: 1px solid var(--ink-4);
+  border-radius: var(--radius-panel);
+  margin: 0 0 var(--space-4, 16px);
+}
+
+.wizard__cl-panel {
+  background: var(--surface-quiet);
+  border: 1px solid var(--ink-4);
+  border-radius: var(--radius-panel);
+  padding: var(--space-3, 12px);
+  margin: var(--space-4, 16px) 0;
+}
+
+.wizard__cl-panel pre {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  white-space: pre-wrap;
+  margin: var(--space-2, 8px) 0;
+}
+
+.wizard__rrn-warning {
+  color: var(--signal-attention);
+  font-size: var(--t-micro);
+  margin: var(--space-2, 8px) 0;
+}
+
+.wizard__primary-row {
+  display: flex;
+  gap: var(--space-3, 12px);
+  margin-top: var(--space-6, 32px);
+}
+
+.wizard__table-select {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+}
+
+/* La table des tables déborde le conteneur centré à 640px (beaucoup de
+   colonnes) — un défilement horizontal contenu vaut mieux qu'un
+   redimensionnement qui écrase la colonne Clé (voir ci-dessous). */
+.wizard__table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.wizard__table-scroll .banded-table { min-width: 760px; }
+
+/* Choix de la clé, en colonne, une option par ligne — jamais un mot par
+   ligne (la colonne se resserrait, les libellés se cassaient au milieu). */
+.wizard__key-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2, 8px);
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 220px;
+}
+
+.wizard__key-choice label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2, 8px);
+  white-space: nowrap;
+  font-size: var(--t-small);
+}

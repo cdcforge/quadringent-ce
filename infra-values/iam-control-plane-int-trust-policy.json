@@ -1,0 +1,19 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EksServiceAccount",
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::000000000000:oidc-provider/oidc.eks.eu-west-3.amazonaws.com/id/EXAMPLEOIDCPROVIDER"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "oidc.eks.eu-west-3.amazonaws.com/id/EXAMPLEOIDCPROVIDER:sub": "system:serviceaccount:quadringent-demo:cdcforge-control-plane",
+          "oidc.eks.eu-west-3.amazonaws.com/id/EXAMPLEOIDCPROVIDER:aud": "sts.amazonaws.com"
+        }
+      }
+    }
+  ]
+}

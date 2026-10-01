@@ -1,0 +1,133 @@
+{{- /*
+  Job de diagnostic pré-vol : vérifie les dépendances déclarées du site
+  (joignabilité TCP IBM i, sonde S3 écriture/lecture, table DynamoDB de
+  checkpoints, destination Snowflake si identifiants configurés, capacité
+  RBAC Jobs en informatif). Le pod écrit une checklist lisible dans ses
+  journaux et sort en échec dès qu'un contrôle requis échoue — le client
+  voit les problèmes d'installation avant que la capture ne démarre.
+
+  Rendu seulement lorsque preflight.enabled=true : le diagnostic s'exécute
+  explicitement, jamais au fil de l'installation standard.
+*/ -}}
+{{- if .Values.preflight.enabled }}
+{{ include "quadringent.siteGuards" . }}
+{{- $repository := .Values.preflight.image.repository | default .Values.controlPlane.image.repository }}
+{{- $allowedRepos := .Values.controlPlane.image.allowedRepositories | default (list "ghcr.io/quadringent/quadringent") }}
+{{- if not (has $repository $allowedRepos) }}
+{{- fail "preflight.image.repository doit figurer dans controlPlane.image.allowedRepositories" }}
+{{- end }}
+{{- $digest := .Values.preflight.image.digest | default .Values.controlPlane.image.digest }}
+{{- if not (regexMatch "^sha256:[a-f0-9]{64}$" $digest) }}
+{{- fail "preflight.image.digest exige un digest sha256 immuable (ou controlPlane.image.digest renseigné)" }}
+{{- end }}
+{{- $serviceAccount := .Values.preflight.serviceAccountName | default .Values.serviceAccount.name }}
+{{- if not (regexMatch "^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$" (required "preflight.serviceAccountName ou serviceAccount.name est obligatoire" $serviceAccount)) }}
+{{- fail "preflight.serviceAccountName doit être un nom Kubernetes borné" }}
+{{- end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: quadringent-preflight
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    quadringent.io/environment: {{ .Values.deployment.environment }}
+    quadringent.io/production-promotion: forbidden
+  labels:
+    {{- include "quadringent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: preflight
+spec:
+  activeDeadlineSeconds: 300
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        {{- include "quadringent.labels" . | nindent 8 }}
+        app.kubernetes.io/component: preflight
+    spec:
+      serviceAccountName: {{ $serviceAccount }}
+      # Jeton monté : l'identité AWS du pod (IRSA / Pod Identity) et la revue
+      # d'accès SelfSubjectAccessReview en ont besoin. Aucun secret IBM i
+      # n'est injecté : le contrôle source reste une joignabilité TCP.
+      automountServiceAccountToken: true
+      restartPolicy: Never
+      {{- with .Values.image.pullSecret }}
+      imagePullSecrets:
+        - name: {{ . }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: preflight
+          image: {{ printf "%s@%s" $repository $digest | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "/app/scripts/quadringent_preflight.py"]
+          {{- if .Values.preflight.snowflakeOidc }}
+          args:
+            - --snowflake-oidc-token-file
+            - /var/run/secrets/snowflake/token
+          {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "quadringent.fullname" . }}-site
+            - configMapRef:
+                name: {{ include "quadringent.fullname" . }}-tuning
+          env:
+            - name: AWS_EC2_METADATA_DISABLED
+              value: "true"
+            - name: AWS_REGION
+              value: {{ .Values.aws.region | quote }}
+            - name: AWS_DEFAULT_REGION
+              value: {{ .Values.aws.region | quote }}
+            - name: AWS_STS_REGIONAL_ENDPOINTS
+              value: regional
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 192Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            {{- include "quadringent.caMount" . | nindent 12 }}
+            {{- if .Values.preflight.snowflakeOidc }}
+            - name: snowflake-identity
+              mountPath: /var/run/secrets/snowflake
+              readOnly: true
+            {{- end }}
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        {{- include "quadringent.caVolume" . | nindent 8 }}
+        {{- if .Values.preflight.snowflakeOidc }}
+        - name: snowflake-identity
+          projected:
+            defaultMode: 0440
+            sources:
+              - serviceAccountToken:
+                  audience: snowflakecomputing.com
+                  expirationSeconds: 600
+                  path: token
+        {{- end }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi
+{{- end }}

@@ -1,0 +1,104 @@
+{
+  "format_version": "quadringent-job-template-v1",
+  "container": "capture",
+  "backoff_limit": 0,
+  "ttl_seconds_after_finished": 60,
+  "reserve_run": true,
+  "pod": {
+    "restartPolicy": "Never",
+    "serviceAccountName": "as400-snowflake-capture",
+    "containers": [
+      {
+        "name": "capture",
+        "image": "000000000000.dkr.ecr.eu-west-3.amazonaws.com/example-platform-int/quadringent-demo-capture@sha256:f7675795b6f07f6e9a7dfcfebae3cf3f4825a1879b40afbcc91132a46ba1a1f1",
+        "imagePullPolicy": "IfNotPresent",
+        "envFrom": [
+          {
+            "configMapRef": {
+              "name": "quadringent-quadringent-tuning"
+            }
+          },
+          {
+            "configMapRef": {
+              "name": "quadringent-quadringent-site"
+            }
+          }
+        ],
+        "env": [
+          {
+            "name": "AS400_STREAM_KEY",
+            "value": "as400/sales/fleet"
+          },
+          {
+            "name": "AS400_RAW_PREFIX",
+            "value": "as400/sales/fleet/history"
+          },
+          {
+            "name": "ISERIES_PASSWORD",
+            "valueFrom": {
+              "secretKeyRef": {
+                "name": "example-corp-ibmi",
+                "key": "ISERIES_PASSWORD"
+              }
+            }
+          }
+        ],
+        "resources": {
+          "requests": {
+            "cpu": "50m",
+            "memory": "512Mi"
+          },
+          "limits": {
+            "cpu": "1",
+            "memory": "2Gi"
+          }
+        },
+        "securityContext": {
+          "allowPrivilegeEscalation": false,
+          "capabilities": {
+            "drop": [
+              "ALL"
+            ]
+          },
+          "readOnlyRootFilesystem": false,
+          "runAsNonRoot": true,
+          "runAsUser": 10001,
+          "runAsGroup": 10001
+        },
+        "volumeMounts": [
+          {
+            "name": "ibmi-ca",
+            "mountPath": "/app/certs/ibmi-ca.pem",
+            "subPath": "ca.crt",
+            "readOnly": true
+          }
+        ]
+      }
+    ],
+    "nodeSelector": {
+      "karpenter.sh/nodepool": "airbyte-jobs"
+    },
+    "tolerations": [
+      {
+        "key": "dedicated",
+        "operator": "Equal",
+        "value": "airbyte-jobs",
+        "effect": "NoSchedule"
+      }
+    ],
+    "volumes": [
+      {
+        "name": "ibmi-ca",
+        "secret": {
+          "secretName": "quadringent-ibmi-ca",
+          "items": [
+            {
+              "key": "ca.crt",
+              "path": "ca.crt"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

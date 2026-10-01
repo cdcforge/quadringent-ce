@@ -1,0 +1,328 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+# Annuler les runs CI obsolètes du même workflow et de la même ref Git seulement.
+# Le préfixe ci- distingue la CI réutilisable du groupe du workflow appelant.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Les rapports Docker ne sont pas scannés : le cache ne doit pas ajouter d'upload.
+  DOCKER_BUILD_RECORD_UPLOAD: "false"
+  DOCKER_BUILD_SUMMARY: "false"
+
+jobs:
+  tests:
+    if: ${{ success() && (!(github.event.repository.private && vars.PRIVATE_RUNNER_LABELS != '') || (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.workflow_ref == format('{0}/.github/workflows/ci.yml@refs/heads/main', github.repository) && github.sha == vars.PRIVATE_APPROVED_SHA)) }}
+    runs-on: ${{ fromJSON(github.event.repository.private && github.event_name == 'push' && github.ref == 'refs/heads/main' && github.workflow_ref == format('{0}/.github/workflows/ci.yml@refs/heads/main', github.repository) && github.sha == vars.PRIVATE_APPROVED_SHA && vars.PRIVATE_RUNNER_LABELS || '["ubuntu-latest"]') }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements.txt
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Dépendances UI requises par les preuves JavaScript
+        run: npm ci --prefix ui
+      - name: Dépendances de test Python
+        run: python -m pip install -e '.[dev,api]'
+      - name: Installer Gitleaks épinglé et vérifier son archive
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+          GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+        run: |
+          case "$RUNNER_ARCH" in
+            X64) archive_arch=x64; archive_sha256="$GITLEAKS_SHA256" ;;
+            ARM64) archive_arch=arm64; archive_sha256=e4a487ee7ccd7d3a7f7ec08657610aa3606637dab924210b3aee62570fb4b080 ;;
+            *) echo "Architecture Linux non prise en charge" >&2; exit 1 ;;
+          esac
+          test "$RUNNER_OS" = "Linux"
+          archive="${RUNNER_TEMP}/gitleaks_${GITLEAKS_VERSION}_linux_${archive_arch}.tar.gz"
+          curl --fail --silent --show-error --location \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_${archive_arch}.tar.gz" \
+            --output "$archive"
+          printf '%s  %s\n' "$archive_sha256" "$archive" | sha256sum --check --strict
+          mkdir -p "${RUNNER_TEMP}/gitleaks-bin"
+          tar --extract --gzip --file "$archive" --directory "${RUNNER_TEMP}/gitleaks-bin" gitleaks
+          printf '%s\n' "${RUNNER_TEMP}/gitleaks-bin" >> "$GITHUB_PATH"
+      - uses: azure/setup-helm@v4
+        with:
+          version: v4.1.4
+      - name: Collecte commune locale et CI
+        id: pytest_collection
+        run: |
+          collection_dir=$(mktemp -d "${RUNNER_TEMP}/pytest-collection.XXXXXX")
+          collection_file="${collection_dir}/pytest-collection.txt"
+          collection_exit=0
+          python -m pytest --collect-only -q > "$collection_file" 2>&1 || collection_exit=$?
+          # Aucune sortie de pytest ne devient publique avant ce scan.
+          gitleaks dir "$collection_dir" --config .gitleaks.toml --redact --no-banner
+          printf 'path=%s\nsafe=true\n' "$collection_file" >> "$GITHUB_OUTPUT"
+          if [ "$collection_exit" -ne 0 ]; then
+            tail -n 120 "$collection_file"
+            exit "$collection_exit"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.pytest_collection.outputs.safe == 'true'
+        with:
+          name: pytest-collection
+          path: ${{ steps.pytest_collection.outputs.path }}
+          retention-days: 1
+      - name: Suite Python unique
+        run: python -m pytest -q
+      - name: Typage, noms et version
+        run: |
+          python -m ruff check src scripts research tests
+          python -m mypy
+          python scripts/sync_version.py --check
+          python scripts/check_publication.py --history-ref HEAD
+      - name: Artefacts installables et arbre exact sans caches
+        run: |
+          python -m build
+          python scripts/export_private.py "${RUNNER_TEMP}/quadringent-source"
+          gitleaks dir "${RUNNER_TEMP}/quadringent-source" --config .gitleaks.toml --redact --no-banner
+          gitleaks git . --log-opts=HEAD --config .gitleaks.toml --redact --no-banner
+          mkdir -p "${RUNNER_TEMP}/quadringent-artifacts/sdist" "${RUNNER_TEMP}/quadringent-artifacts/wheel"
+          tar -xzf dist/*.tar.gz -C "${RUNNER_TEMP}/quadringent-artifacts/sdist"
+          unzip -q dist/*.whl -d "${RUNNER_TEMP}/quadringent-artifacts/wheel"
+          gitleaks dir "${RUNNER_TEMP}/quadringent-artifacts/sdist" --config .gitleaks.toml --redact --no-banner
+          gitleaks dir "${RUNNER_TEMP}/quadringent-artifacts/wheel" --config .gitleaks.toml --redact --no-banner
+          # Les tests inclus dans le sdist doivent retrouver leurs fixtures
+          # depuis l'archive extraite, pas depuis le checkout du runner.
+          sdist_roots=("${RUNNER_TEMP}"/quadringent-artifacts/sdist/quadringent-*)
+          test "${#sdist_roots[@]}" -eq 1
+          (cd "${sdist_roots[0]}" && python -m pytest -q \
+            tests/test_chart_no_connection.py tests/test_v2_qtimzon_mapping.py)
+      - name: UI depuis dépendances verrouillées
+        run: |
+          npm test --prefix ui
+          npm run typecheck --prefix ui
+          npm run build --prefix ui
+      - name: Matrice de panne locale
+        run: python scripts/raw_checkpoint_fault_matrix.py
+
+  quadringent-product-gate:
+    needs: [image-runtime, verifier-runtime, cockpit-runtime]
+    if: ${{ success() && (!(github.event.repository.private && vars.PRIVATE_RUNNER_LABELS != '') || (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.workflow_ref == format('{0}/.github/workflows/ci.yml@refs/heads/main', github.repository) && github.sha == vars.PRIVATE_APPROVED_SHA)) }}
+    runs-on: ${{ fromJSON(github.event.repository.private && github.event_name == 'push' && github.ref == 'refs/heads/main' && github.workflow_ref == format('{0}/.github/workflows/ci.yml@refs/heads/main', github.repository) && github.sha == vars.PRIVATE_APPROVED_SHA && vars.PRIVATE_RUNNER_LABELS || '["ubuntu-latest"]') }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - uses: azure/setup-helm@v4
+        with:
+          version: v4.1.4
+      - name: Installation hermétique des dépendances UI
+        run: npm ci --prefix ui
+      - name: Build UI de production
+        run: npm run build --prefix ui
+      - name: Gate vertical Quadringent
+        run: |
+          set -a
+          . examples/local.env
+          set +a
+          python scripts/verify_quadringent_vertical.py --ui-dist ui/dist
+        env:
+          PYTHONPATH: src
+
+  java:
+    if: ${{ success() && (!(github.event.repository.private && vars.PRIVATE_RUNNER_LABELS != '') || (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.workflow_ref == format('{0}/.github/workflows/ci.yml@refs/heads/main', github.repository) && github.sha == vars.PRIVATE_APPROVED_SHA)) }}
+    runs-on: ${{ fromJSON(github.event.repository.private && github.event_name == 'push' && github.ref == 'refs/heads/main' && github.workflow_ref == format('{0}/.github/workflows/ci.yml@refs/heads/main', github.repository) && github.sha == vars.PRIVATE_APPROVED_SHA && vars.PRIVATE_RUNNER_LABELS || '["ubuntu-latest"]') }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: java/pom.xml
+      - name: Contrats Java hors connexion source
+        run: sh scripts/test_java_all.sh
+
+  chart:
+    if: ${{ success() && (!(github.event.repository.private && vars.PRIVATE_RUNNER_LABELS != '') || (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.workflow_ref == format('{0}/.github/workflows/ci.yml@refs/heads/main', github.repository) && github.sha == vars.PRIVATE_APPROVED_SHA)) }}
+    runs-on: ${{ fromJSON(github.event.repository.private && github.event_name == 'push' && github.ref == 'refs/heads/main' && github.workflow_ref == format('{0}/.github/workflows/ci.yml@refs/heads/main', github.repository) && github.sha == vars.PRIVATE_APPROVED_SHA && vars.PRIVATE_RUNNER_LABELS || '["ubuntu-latest"]') }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v4.1.4
+      - name: Lint
+        run: helm lint chart --namespace quadringent-demo -f infra-values/values-int.yaml
+      - name: Le digest doit rester obligatoire
+        run: |
+          # la chart doit refuser de se rendre sans digest : garde-fou anti tag mouvant
+          if helm template t chart --namespace quadringent-demo --set image.digest="" \
+               -f infra-values/values-int.yaml >/dev/null 2>&1; then
+            echo "REGRESSION : la chart accepte une image sans digest"; exit 1
+          fi
+          echo "garde-fou digest actif"
+      - name: replicaCount doit rester borné à 1
+        run: |
+          # deux lecteurs de journal concurrents font bloquer IBM i
+          if helm template t chart --namespace quadringent-demo -f infra-values/values-int.yaml \
+               --set replicaCount=2 >/dev/null 2>&1; then
+            echo "REGRESSION : la chart accepte plus d'un réplica"; exit 1
+          fi
+          echo "garde-fou replicaCount actif"
+      - name: La chart reste DEV-only et non promouvable
+        run: |
+          if helm template t chart --namespace quadringent-demo-prod \
+               -f infra-values/values-int.yaml >/dev/null 2>&1; then
+            echo "REGRESSION : la chart accepte un autre namespace"; exit 1
+          fi
+          if helm template t chart --namespace quadringent-demo \
+               -f infra-values/values-int.yaml \
+               --set deployment.environment=prod >/dev/null 2>&1; then
+            echo "REGRESSION : la chart accepte une promotion PROD"; exit 1
+          fi
+          echo "garde-fou DEV-only actif"
+
+  cockpit-runtime:
+    if: ${{ success() && (!(github.event.repository.private && vars.PRIVATE_RUNNER_LABELS != '') || (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.workflow_ref == format('{0}/.github/workflows/ci.yml@refs/heads/main', github.repository) && github.sha == vars.PRIVATE_APPROVED_SHA)) }}
+    runs-on: ${{ fromJSON(github.event.repository.private && github.event_name == 'push' && github.ref == 'refs/heads/main' && github.workflow_ref == format('{0}/.github/workflows/ci.yml@refs/heads/main', github.repository) && github.sha == vars.PRIVATE_APPROVED_SHA && vars.PRIVATE_RUNNER_LABELS || '["ubuntu-latest"]') }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      COCKPIT_IMAGE: quadringent-cockpit-ci:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+        with:
+          name: ${{ runner.environment == 'self-hosted' && 'quadringent-private' || '' }}
+          keep-state: ${{ runner.environment == 'self-hosted' }}
+      - name: Construire le cockpit et son API depuis les dépendances verrouillées
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/control-plane.Dockerfile
+          platforms: linux/amd64
+          tags: ${{ env.COCKPIT_IMAGE }}
+          load: true
+          push: false
+          cache-from: type=gha,version=2,scope=ci-cockpit-amd64,timeout=2m
+          # Les PR lisent le cache de base sans exporter d'images propres à leur ref.
+          # Garder le quota du dépôt <=10 GB ; ne pas activer d'extension payante.
+          cache-to: ${{ github.event_name != 'pull_request' && runner.environment != 'self-hosted' && 'type=gha,version=2,scope=ci-cockpit-amd64,mode=min,ignore-error=true,timeout=2m' || '' }}
+      - name: Vérifier HTML, assets et API sans réseau ni identifiants
+        run: sh scripts/test_control_plane_image.sh "$COCKPIT_IMAGE"
+
+  verifier-runtime:
+    if: ${{ success() && (!(github.event.repository.private && vars.PRIVATE_RUNNER_LABELS != '') || (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.workflow_ref == format('{0}/.github/workflows/ci.yml@refs/heads/main', github.repository) && github.sha == vars.PRIVATE_APPROVED_SHA)) }}
+    runs-on: ${{ fromJSON(github.event.repository.private && github.event_name == 'push' && github.ref == 'refs/heads/main' && github.workflow_ref == format('{0}/.github/workflows/ci.yml@refs/heads/main', github.repository) && github.sha == vars.PRIVATE_APPROVED_SHA && vars.PRIVATE_RUNNER_LABELS || '["ubuntu-latest"]') }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      VERIFIER_IMAGE: quadringent-verifier-ci:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+        with:
+          name: ${{ runner.environment == 'self-hosted' && 'quadringent-private' || '' }}
+          keep-state: ${{ runner.environment == 'self-hosted' }}
+      - name: Construire le vérificateur et ses dépendances verrouillées
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/verifier.Dockerfile
+          platforms: linux/amd64
+          tags: ${{ env.VERIFIER_IMAGE }}
+          load: true
+          push: false
+          cache-from: type=gha,version=2,scope=ci-verifier-amd64,timeout=2m
+          # Les PR lisent le cache de base sans exporter d'images propres à leur ref.
+          # Garder le quota du dépôt <=10 GB ; ne pas activer d'extension payante.
+          cache-to: ${{ github.event_name != 'pull_request' && runner.environment != 'self-hosted' && 'type=gha,version=2,scope=ci-verifier-amd64,mode=min,ignore-error=true,timeout=2m' || '' }}
+      - name: Vérifier le runtime sans réseau ni identifiants
+        run: sh scripts/test_verifier_image.sh "$VERIFIER_IMAGE"
+
+  image-runtime:
+    if: ${{ success() && (!(github.event.repository.private && vars.PRIVATE_RUNNER_LABELS != '') || (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.workflow_ref == format('{0}/.github/workflows/ci.yml@refs/heads/main', github.repository) && github.sha == vars.PRIVATE_APPROVED_SHA)) }}
+    runs-on: ${{ fromJSON(github.event.repository.private && github.event_name == 'push' && github.ref == 'refs/heads/main' && github.workflow_ref == format('{0}/.github/workflows/ci.yml@refs/heads/main', github.repository) && github.sha == vars.PRIVATE_APPROVED_SHA && vars.PRIVATE_RUNNER_LABELS || '["ubuntu-latest"]') }}
+    timeout-minutes: 15
+    env:
+      CDC_IMAGE: quadringent-ci:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: L'image ne doit embarquer que le chemin d'exécution
+        run: |
+          # tout module listé dans le manifeste doit être copié par le Dockerfile,
+          # et le Dockerfile ne doit pas copier le répertoire entier
+          if grep -qE "^COPY src/quadringent /" docker/Dockerfile; then
+            echo "REGRESSION : le Dockerfile copie tout le paquet"; exit 1
+          fi
+          while read -r module; do
+            name=$(basename "$module")
+            grep -q "COPY src/quadringent/$name" docker/Dockerfile || {
+              echo "module du chemin d'exécution absent de l'image : $name"; exit 1; }
+          done < docker/runtime-modules.txt
+          echo "surface de l'image conforme au manifeste"
+      - uses: docker/setup-buildx-action@v3
+        with:
+          name: ${{ runner.environment == 'self-hosted' && 'quadringent-private' || '' }}
+          keep-state: ${{ runner.environment == 'self-hosted' }}
+      - name: Construire l'image finale épinglée
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64
+          tags: ${{ env.CDC_IMAGE }}
+          load: true
+          push: false
+          cache-from: type=gha,version=2,scope=ci-capture-amd64,timeout=2m
+          # Les PR lisent le cache de base sans exporter d'images propres à leur ref.
+          # Garder le quota du dépôt <=10 GB ; ne pas activer d'extension payante.
+          cache-to: ${{ github.event_name != 'pull_request' && runner.environment != 'self-hosted' && 'type=gha,version=2,scope=ci-capture-amd64,mode=min,ignore-error=true,timeout=2m' || '' }}
+      - name: Démarrer le point d'entrée de l'image
+        run: docker run --rm "$CDC_IMAGE" --help | grep -q "continuous IBM i journal capture"
+      - name: Importer le chemin runtime depuis l'image
+        run: |
+          output=$(docker run --rm --entrypoint /opt/venv/bin/python "$CDC_IMAGE" \
+            -c "import quadringent.console_snapshot, quadringent.lag_history, as400_continuous_capture; print('runtime-imports-ok')")
+          test "$output" = "runtime-imports-ok"
+      - name: Importer le control plane depuis l'image
+        run: |
+          output=$(docker run --rm --entrypoint /opt/venv/bin/python "$CDC_IMAGE" \
+            -c "import quadringent_control_plane.server, quadringent_control_plane.repository, quadringent_control_plane.cli; print('control-plane-imports-ok')")
+          test "$output" = "control-plane-imports-ok"
+          help_output=$(docker run --rm --entrypoint /opt/venv/bin/python "$CDC_IMAGE" \
+              /app/quadringent_control_plane.py --help)
+          if printf '%s\n' "$help_output" | grep -q "allow-non-loopback"; then
+            echo "REGRESSION : le control plane expose un bind non-loopback"; exit 1
+          fi

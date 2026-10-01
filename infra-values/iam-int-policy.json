@@ -1,0 +1,43 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "RawObjectsOnly",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::example-corp-000000000000-int-example-corp-raw/as400/sales/cntr/*",
+        "arn:aws:s3:::example-corp-000000000000-int-example-corp-raw/as400/sales/sale/*"
+      ]
+    },
+    {
+      "Sid": "RawPrefixListingOnly",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::example-corp-000000000000-int-example-corp-raw",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "as400/sales/cntr",
+            "as400/sales/cntr/*",
+            "as400/sales/sale",
+            "as400/sales/sale/*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "CheckpointTableOnly",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:PutItem",
+        "dynamodb:GetItem",
+        "dynamodb:DescribeTable"
+      ],
+      "Resource": "arn:aws:dynamodb:eu-west-3:000000000000:table/example-corp-int-example-corp-checkpoints"
+    }
+  ]
+}

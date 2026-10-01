@@ -1,0 +1,192 @@
+{{- if .Values.verification.enabled }}
+{{- $window := .Values.pilot.proofWindow.enabled }}
+{{- $chain := and $window (hasKey .Values.pilot.proofWindow "count") }}
+{{- if and $window (or (not .Values.verification.publishProof) .Values.verification.slo.enabled) }}
+{{- fail "verification de fenêtre exige publishProof=true et slo.enabled=false : aucun SLO historique ne doit être inventé" }}
+{{- end }}
+{{- $site := .Values.site }}
+{{- $proofLane := printf "%s/%s" $site.rawPrefixRoot (lower $site.proofTable) }}
+{{ include "quadringent.siteGuards" . }}
+{{- if or (not .Values.pilot.enabled) (not .Values.consoleSnapshot.enabled) }}
+{{- fail "verification exige un pilote et son snapshot activés" }}
+{{- end }}
+{{- if or (ne .Values.storage.rawBucket $site.rawBucket) (ne (trimSuffix "/" .Values.storage.rawPrefix) $proofLane) (ne .Values.ibmi.schema $site.sourceSchema) (ne .Values.ibmi.table $site.proofTable) }}
+{{- fail "verification exige la fenêtre de preuve isolée du site déclaré" }}
+{{- end }}
+{{- if not (regexMatch "^sha256:[a-f0-9]{64}$" .Values.verification.imageDigest) }}
+{{- fail "verification.imageDigest doit être un digest SHA256" }}
+{{- end }}
+{{- $await := add (int .Values.pilot.maxSeconds) (int .Values.pilot.shutdownMarginSeconds) }}
+{{- if or (le $await 0) (and (not $window) (gt $await 3660)) (and $window (gt (add $await 180) 5400)) (lt (int .Values.pilot.shutdownMarginSeconds) 0) }}
+{{- fail "verification : capture + marge doit être positif, <=3660s en mode historique ; en mode fenêtre, capture + marge + 180s doit être <=5400s" }}
+{{- end }}
+{{- $runId := toString .Values.pilot.runId }}
+{{- $name := printf "quadringent-verify-%s" $runId }}
+{{- if or (not (regexMatch "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$" $runId)) (gt (len $name) 63) }}
+{{- fail "verification exige un pilot.runId DNS borné" }}
+{{- end }}
+{{- if .Values.verification.slo.enabled }}
+{{- $policy := mustFromJson (required "verification.slo.policyJson exige une politique explicite" .Values.verification.slo.policyJson) }}
+{{- if or (not (kindIs "map" $policy)) (ne (len $policy) 10) }}
+{{- fail "verification.slo.policyJson exige les dix seuils SLO" }}
+{{- end }}
+{{- range $key := list "capture_freshness_seconds" "s3_freshness_seconds" "destination_freshness_seconds" "checkpoint_lag_sequences" "delivery_latency_p95_seconds" "delivery_latency_p99_seconds" "s3_requests_24h" "snowpipe_pending_files" "snowflake_credits_24h" "observability_freshness_seconds" }}
+{{- if not (hasKey $policy $key) }}
+{{- fail "verification.slo.policyJson contient des seuils absents ou inconnus" }}
+{{- end }}
+{{- $value := index $policy $key }}
+{{- if not (kindIs "float64" $value) }}
+{{- fail "verification.slo.policyJson exige des nombres positifs ou nuls" }}
+{{- end }}
+{{- if lt $value 0.0 }}
+{{- fail "verification.slo.policyJson exige des nombres positifs ou nuls" }}
+{{- end }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ printf "quadringent-slo-%s" $runId }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: quadringent-verifier
+    quadringent.io/run: {{ $runId | quote }}
+immutable: true
+data:
+  policy.json: {{ $policy | toJson | quote }}
+---
+{{- end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: quadringent-verifier
+    quadringent.io/run: {{ $runId | quote }}
+spec:
+  activeDeadlineSeconds: {{ add $await 240 }}
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: quadringent-verifier
+        quadringent.io/run: {{ $runId | quote }}
+    spec:
+      serviceAccountName: {{ required "verifierServiceAccountName" .Values.verifierServiceAccountName }}
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      {{- with .Values.image.pullSecret }}
+      imagePullSecrets:
+        - name: {{ . }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: verifier
+          image: {{ printf "%s@%s" .Values.image.repository .Values.verification.imageDigest | quote }}
+          {{- if $window }}
+          command: ["python", "/app/scripts/quadringent_window_supervise.py"]
+          {{- end }}
+          args:
+            - --run-id
+            - {{ $runId | quote }}
+            {{- if $window }}
+            {{- if $chain }}
+            - --chain-proof-directory
+            - /work/windows
+            {{- else }}
+            - --window-id
+            - {{ .Values.pilot.proofWindow.id | quote }}
+            {{- end }}
+            - --budget-seconds
+            - {{ add $await 180 | quote }}
+            {{- else }}
+            - --run-tag
+            - {{ printf "RUN_%s" ($runId | sha256sum | trunc 20 | upper) | quote }}
+            - --await-capture-seconds
+            - {{ $await | quote }}
+            - --wait-seconds
+            - "120"
+            {{- end }}
+            - --aws-default-credentials
+            - --snowflake-oidc-token-file
+            - /var/run/secrets/snowflake/token
+            {{- if not $chain }}
+            - --proof-output
+            - /work/proof.json
+            {{- end }}
+            {{- if .Values.verification.slo.enabled }}
+            - --slo-policy
+            - /etc/quadringent-slo/policy.json
+            {{- end }}
+            {{- if and .Values.verification.publishProof (not $window) }}
+            - --proof-s3-uri
+            - {{ printf "s3://%s/%s/proofs/%s" $site.rawBucket $proofLane (default "quadringent-autonomous-latest.json" $site.autonomousProofName) | quote }}
+            - --publish-confirm
+            - {{ printf "PUBLISH_%s_AUTONOMOUS_PROOF_%s" $site.destinationSchema (upper .Values.deployment.environment) | quote }}
+            {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "quadringent.fullname" . }}-site
+          env:
+            - name: AWS_EC2_METADATA_DISABLED
+              value: "true"
+            - name: AWS_DEFAULT_REGION
+              value: {{ .Values.aws.region | quote }}
+            - name: AWS_STS_REGIONAL_ENDPOINTS
+              value: regional
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 192Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            {{- if .Values.verification.slo.enabled }}
+            - name: slo-policy
+              mountPath: /etc/quadringent-slo
+              readOnly: true
+            {{- end }}
+            - name: snowflake-identity
+              mountPath: /var/run/secrets/snowflake
+              readOnly: true
+            - name: work
+              mountPath: /work
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        {{- if .Values.verification.slo.enabled }}
+        - name: slo-policy
+          configMap:
+            name: {{ printf "quadringent-slo-%s" $runId }}
+            defaultMode: 0444
+        {{- end }}
+        - name: snowflake-identity
+          projected:
+            defaultMode: 0440
+            sources:
+              - serviceAccountToken:
+                  audience: snowflakecomputing.com
+                  expirationSeconds: 600
+                  path: token
+        - name: work
+          emptyDir:
+            sizeLimit: 16Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi
+{{- end }}

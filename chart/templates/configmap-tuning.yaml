@@ -1,0 +1,91 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "quadringent.fullname" . }}-tuning
+  labels:
+    {{- include "quadringent.labels" . | nindent 4 }}
+data:
+  {{- /* gap (a) de docs/product/install-default.md : tant qu'aucune connexion
+    IBM i n'est déclarée (site.connectionDeclared=false), aucun champ de
+    connexion (ISERIES_ et AS400_ journal, bootstrap, snapshot console)
+    n'est exigé ni publié — ce ConfigMap ne porte alors que les réglages de
+    performance et de stockage, déjà connus de l'installateur. */ -}}
+  {{- if .Values.site.connectionDeclared }}
+  # IBM i — aucun secret ici, le mot de passe passe par secretKeyRef
+  ISERIES_HOST: {{ required "ibmi.host est obligatoire" .Values.ibmi.host | quote }}
+  ISERIES_USER: {{ required "ibmi.user est obligatoire" .Values.ibmi.user | quote }}
+  ISERIES_SCHEMA: {{ required "ibmi.schema est obligatoire" .Values.ibmi.schema | quote }}
+  ISERIES_TABLE: {{ required "ibmi.table est obligatoire" .Values.ibmi.table | quote }}
+  AS400_JOURNAL_LIBRARY: {{ required "ibmi.journalLibrary est obligatoire" .Values.ibmi.journalLibrary | quote }}
+  AS400_JOURNAL_NAME: {{ required "ibmi.journalName est obligatoire" .Values.ibmi.journalName | quote }}
+  AS400_SOURCE_TIME_ZONE: {{ required "ibmi.sourceTimeZone est obligatoire (fuseau IANA vérifié sur IBM i)" .Values.ibmi.sourceTimeZone | quote }}
+  AS400_TLS: {{ .Values.as400.tls | quote }}
+  AS400_ALLOW_PLAINTEXT: {{ .Values.as400.allowPlaintext | quote }}
+  AS400_TLS_CA_FILE: {{ required "as400.tlsCaFile est obligatoire" .Values.as400.tlsCaFile | quote }}
+  {{- range $envName, $valueName := dict "AS400_DATABASE_PORT" "databasePort" "AS400_SIGNON_PORT" "signonPort" "AS400_COMMAND_PORT" "commandPort" }}
+  {{- $raw := get $.Values.as400 $valueName }}
+  {{- if ne (toString $raw) "" }}
+  {{- if not (regexMatch "^[0-9]{1,5}$" (toString $raw)) }}
+  {{- fail (printf "as400.%s doit être un numéro de port borné" $valueName) }}
+  {{- end }}
+  {{- $port := int $raw }}
+  {{- if or (lt $port 1) (gt $port 65535) }}
+  {{- fail (printf "as400.%s doit rester entre 1 et 65535" $valueName) }}
+  {{- end }}
+  {{ $envName }}: {{ $port | quote }}
+  {{- end }}
+  {{- end }}
+  {{- $bootstrapMode := required "bootstrap.mode est obligatoire" .Values.bootstrap.mode }}
+  {{- if eq $bootstrapMode "tail" }}
+  AS400_BOOTSTRAP_RECEIVER: "__TAIL__"
+  {{- else if eq $bootstrapMode "explicit" }}
+  AS400_BOOTSTRAP_RECEIVER: {{ required "bootstrap.receiver est obligatoire en mode explicit" .Values.bootstrap.receiver | quote }}
+  AS400_BOOTSTRAP_SEQUENCE: {{ required "bootstrap.sequence est obligatoire en mode explicit" .Values.bootstrap.sequence | quote }}
+  {{- else if ne $bootstrapMode "checkpoint" }}
+  {{- fail "bootstrap.mode doit être checkpoint, tail ou explicit" }}
+  {{- end }}
+  {{- if .Values.consoleSnapshot.enabled }}
+  AS400_CONSOLE_SNAPSHOT_S3_KEY: {{ required "consoleSnapshot.s3Key est obligatoire lorsque consoleSnapshot.enabled=true" .Values.consoleSnapshot.s3Key | quote }}
+  {{- end }}
+  {{- else if or .Values.ibmi.host .Values.ibmi.user .Values.ibmi.schema .Values.ibmi.table .Values.ibmi.journalLibrary .Values.ibmi.journalName .Values.as400.tlsCaFile }}
+  {{- fail "site.connectionDeclared=false exige que les champs de connexion IBM i (ibmi.*, as400.tlsCaFile) restent vides : aucune valeur partielle ou fictive n'est acceptée" }}
+  {{- end }}
+
+  # Réglages validés par le soak du 2026-08-27
+  AS400_BATCH_ENTRIES: {{ .Values.tuning.batchEntries | quote }}
+  ISERIES_MAX_DECODED_ENTRIES: {{ .Values.tuning.maxDecodedEntries | quote }}
+  # Helm normalise parfois les grands scalaires YAML en notation scientifique ;
+  # le runtime attend volontairement un entier décimal strict.
+  ISERIES_JOURNAL_BUFFER_SIZE: {{ int .Values.tuning.journalBufferSize | quote }}
+  AS400_READER_TIMEOUT_SECONDS: {{ .Values.tuning.readerTimeoutSeconds | quote }}
+  AS400_RETRIEVE_TIMEOUT_MS: {{ .Values.tuning.retrieveTimeoutMs | quote }}
+  AS400_MORE_DATA_TIMEOUT_MS: {{ .Values.tuning.moreDataTimeoutMs | quote }}
+  AS400_FINAL_POSITION_TIMEOUT_MS: {{ .Values.tuning.finalPositionTimeoutMs | quote }}
+  AS400_POLL_SECONDS: {{ .Values.tuning.pollSeconds | quote }}
+  AS400_MIN_POLL_SECONDS: {{ .Values.tuning.minPollSeconds | quote }}
+  AS400_TAIL_PROBE: {{ ternary "true" "false" .Values.tuning.tailProbe | quote }}
+  AS400_EMPTY_PROBE: {{ ternary "1" "0" .Values.tuning.emptyProbe | quote }}
+  AS400_CATALOG_QUERY_TIMEOUT_SECONDS: {{ .Values.tuning.catalogQueryTimeoutSeconds | quote }}
+  AS400_RECEIVER_METADATA_LIMIT: {{ .Values.tuning.receiverMetadataLimit | quote }}
+  AS400_RECEIVER_CATALOG_CACHE_POLLS: {{ .Values.tuning.catalogCachePolls | quote }}
+  AS400_RECEIVER_CATALOG_CACHE_SECONDS: {{ .Values.tuning.catalogCacheSeconds | quote }}
+  AS400_RECEIVER_CATALOG_MAX_STALE: {{ .Values.tuning.catalogMaxStale | quote }}
+  AS400_CATCH_UP_BATCH_ENTRIES: {{ .Values.tuning.catchUpBatchEntries | quote }}
+  AS400_CATCH_UP_DIVISOR: {{ .Values.tuning.catchUpDivisor | quote }}
+
+  # Stockage
+  {{- $storageBackend := .Values.storage.backend | default "aws" }}
+  {{- if not (or (eq $storageBackend "aws") (eq $storageBackend "gcs")) }}
+  {{- fail "storage.backend doit être aws ou gcs" }}
+  {{- end }}
+  QUADRINGENT_STORAGE_BACKEND: {{ $storageBackend | quote }}
+  AS400_RAW_BUCKET: {{ required "storage.rawBucket est obligatoire" .Values.storage.rawBucket | quote }}
+  AS400_RAW_PREFIX: {{ required "storage.rawPrefix est obligatoire" .Values.storage.rawPrefix | quote }}
+  AS400_STREAM_KEY: {{ required "storage.streamKey est obligatoire" .Values.storage.streamKey | quote }}
+  {{- if eq $storageBackend "gcs" }}
+  AS400_CHECKPOINT_BUCKET: {{ required "storage.checkpointBucket est obligatoire lorsque storage.backend=gcs" .Values.storage.checkpointBucket | quote }}
+  {{- else }}
+  AS400_CHECKPOINT_TABLE: {{ required "storage.checkpointTable est obligatoire lorsque storage.backend=aws" .Values.storage.checkpointTable | quote }}
+  AWS_REGION: {{ required "aws.region est obligatoire lorsque storage.backend=aws" .Values.aws.region | quote }}
+  AWS_DEFAULT_REGION: {{ required "aws.region est obligatoire lorsque storage.backend=aws" .Values.aws.region | quote }}
+  {{- end }}

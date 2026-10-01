@@ -1,0 +1,117 @@
+{{- if .Values.fleetObserve.enabled }}
+{{- $site := .Values.site }}
+{{ include "quadringent.siteGuards" . }}
+{{- if not (kindIs "bool" .Values.fleetObserve.enabled) }}
+{{- fail "fleetObserve.enabled exige un booléen" }}
+{{- end }}
+{{- if not (regexMatch "^sha256:[a-f0-9]{64}$" .Values.fleetObserve.imageDigest) }}
+{{- fail "fleetObserve.imageDigest exige un SHA256 immuable" }}
+{{- end }}
+{{- if not (has .Values.fleetObserve.schedule (list "*/2 * * * *" "*/3 * * * *" "*/4 * * * *")) }}
+{{- fail "fleetObserve.schedule exige une cadence de 2, 3 ou 4 minutes (fraîcheur document 5 min)" }}
+{{- end }}
+{{- if not (kindIs "bool" .Values.fleetObserve.suspend) }}
+{{- fail "fleetObserve.suspend exige un booléen" }}
+{{- end }}
+{{- if le (float64 .Values.fleetObserve.manifestBudget) (float64 0) }}
+{{- fail "fleetObserve.manifestBudget exige un entier strictement positif" }}
+{{- end }}
+{{- $name := printf "%s-fleet-observe" (include "quadringent.fullname" . | trunc 37 | trimSuffix "-") }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "quadringent.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.fleetObserve.schedule | quote }}
+  timeZone: Etc/UTC
+  suspend: {{ .Values.fleetObserve.suspend }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 120
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 300
+      backoffLimit: 0
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: fleet-observability
+        spec:
+          serviceAccountName: {{ required "verifierServiceAccountName" .Values.verifierServiceAccountName }}
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          nodeSelector:
+            kubernetes.io/arch: amd64
+          {{- with .Values.image.pullSecret }}
+          imagePullSecrets:
+            - name: {{ . }}
+          {{- end }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: observer
+              image: {{ printf "%s@%s" .Values.image.repository .Values.fleetObserve.imageDigest | quote }}
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  # Mesure la livraison Snowflake des voies déclarées et
+                  # publie la preuve combinée sur la clé dédiée
+                  # fleet/console-proof.json — le snapshot du lecteur n'est
+                  # jamais modifié (une clé, un écrivain).
+                  python /app/scripts/quadringent_fleet_observe.py \
+                    --aws-default-credentials \
+                    --snowflake-oidc-token-file /var/run/secrets/snowflake/token \
+                    --manifest-budget {{ .Values.fleetObserve.manifestBudget }} \
+                    --execute
+              envFrom:
+                - configMapRef:
+                    name: {{ include "quadringent.fullname" . }}-site
+              env:
+                - name: AWS_EC2_METADATA_DISABLED
+                  value: "true"
+                - name: AWS_DEFAULT_REGION
+                  value: {{ .Values.aws.region | quote }}
+                - name: AWS_STS_REGIONAL_ENDPOINTS
+                  value: regional
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 192Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+              volumeMounts:
+                - name: snowflake-identity
+                  mountPath: /var/run/secrets/snowflake
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: snowflake-identity
+              projected:
+                defaultMode: 0440
+                sources:
+                  - serviceAccountToken:
+                      audience: snowflakecomputing.com
+                      expirationSeconds: 600
+                      path: token
+            - name: tmp
+              emptyDir:
+                sizeLimit: 16Mi
+{{- end }}

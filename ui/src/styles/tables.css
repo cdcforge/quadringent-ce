@@ -1,0 +1,100 @@
+/* Tables — une ligne par table, quatre colonnes au plus. */
+
+.tables {
+  background: var(--surface-panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  padding: var(--space-6) var(--space-7);
+}
+
+.tables__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-5);
+  margin-bottom: var(--space-5);
+}
+
+.tables__title {
+  font-size: var(--t-lead);
+  font-weight: var(--w-medium);
+  color: var(--ink-1);
+}
+
+.tables__title a { color: inherit; }
+
+.tables__summary {
+  margin-top: 2px;
+  font-size: var(--t-small);
+  color: var(--ink-3);
+}
+
+.tables__search {
+  font: inherit;
+  font-size: var(--t-small);
+  color: var(--ink-1);
+  background: var(--surface-quiet);
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  padding: 7px 12px;
+  min-width: 200px;
+}
+
+.tables__search:focus {
+  background: var(--surface-panel);
+  border-color: var(--ink-3);
+  outline: none;
+}
+
+.tables__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 130px 90px 180px;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--rule);
+}
+
+.tables__name {
+  font-size: var(--t-body);
+  color: var(--ink-1);
+}
+
+.tables__state {
+  font-size: var(--t-small);
+  color: var(--ink-3);
+}
+
+.tables__row--copiee .tables__state { color: var(--signal-ok); }
+.tables__row--bloquee .tables__state { color: var(--signal-incident); }
+.tables__row--encours .tables__state { color: var(--signal-attention); }
+
+.tables__progress {
+  display: block;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-subtle);
+  overflow: hidden;
+}
+
+.tables__progress-fill {
+  display: block;
+  height: 100%;
+  background: var(--signal-attention);
+}
+
+.tables__rows {
+  text-align: right;
+  font-size: var(--t-small);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.tables__rows-unit { color: var(--ink-4); }
+
+.tables__rows--absent { color: var(--ink-4); }
+
+.tables__none {
+  padding: var(--space-5) 0;
+  color: var(--ink-3);
+}

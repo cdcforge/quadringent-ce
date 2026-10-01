@@ -1,0 +1,894 @@
+/* Plateau Sources — L0 live.
+   Visuel d'abord : l'état se lit en couleur et en forme — vert mesuré,
+   ambre à vérifier, rouge incident, gris non courant ou non observé.
+   Le texte ne sert qu'en repli : tooltips et couche « Mesures ».
+   Interdits tenus : pas de grain, glow, glass, 3D, ni trait interpolé. */
+
+.sources-view {
+  gap: 76px;
+}
+
+.sources-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 32px;
+  padding-block: 48px 0;
+}
+
+.sources-head__copy {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sources-title {
+  color: var(--text-strong);
+  font-size: 28px;
+  font-weight: 570;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+/* Verdict du plateau : un mot, une couleur — le détail vit en tooltip. */
+.sources-verdict {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin: 2px 0 0;
+  color: var(--text-muted);
+}
+
+.sources-verdict__dot {
+  width: 11px;
+  height: 11px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--text-subtle);
+}
+
+.sources-verdict strong {
+  font-size: 21px;
+  font-weight: 560;
+  letter-spacing: -0.02em;
+  color: var(--text-main);
+}
+
+.sources-verdict--positive .sources-verdict__dot { background: var(--signal-ok); }
+.sources-verdict--positive strong { color: var(--signal-ok); }
+.sources-verdict--attention .sources-verdict__dot { background: var(--signal-incident); }
+.sources-verdict--attention strong { color: var(--signal-incident); }
+.sources-verdict--muted strong { color: var(--text-muted); }
+
+.sources-head__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+
+.sources-head__actions .page-action {
+  min-height: 34px;
+  padding-inline: 12px;
+  font-size: 12px;
+}
+
+/* ------------------------------------------------------------------ */
+/* File d'attention — une ligne : le drapeau + la cause, rien de plus   */
+/* ------------------------------------------------------------------ */
+
+.sources-attention {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  column-gap: 10px;
+  margin: -26px 0 0;
+  font-size: 13px;
+  color: var(--text-main);
+}
+
+.sources-attention > .flow-flag__icon {
+  align-self: center;
+  color: var(--signal-incident);
+}
+
+.sources-attention__item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.sources-attention__item a {
+  color: var(--text-strong);
+  font-weight: 540;
+}
+
+.sources-attention__cause {
+  color: var(--text-muted);
+}
+
+.sources-attention__sep {
+  margin-inline: 2px;
+  color: var(--text-subtle);
+}
+
+/* ------------------------------------------------------------------ */
+/* Section live par connexion — un objet visuel, beaucoup de blanc      */
+/* ------------------------------------------------------------------ */
+
+.source-section {
+  display: grid;
+  gap: 30px;
+  padding-top: 34px;
+  border-top: 1px solid var(--line-subtle);
+}
+
+.source-section__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: 28px;
+}
+
+.source-section__identity {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.source-section__title {
+  color: var(--text-strong);
+  font: 560 15px/1.3 var(--font-mono);
+  letter-spacing: -0.01em;
+}
+
+.source-section__title:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.source-section__env {
+  color: var(--text-muted);
+  font: 500 11px/1.3 var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+.source-badge,
+.scope-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding-inline: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  color: var(--text-muted);
+  font: 500 10px/1.2 var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.source-badge--live {
+  color: var(--signal-live);
+  border-color: var(--signal-live);
+}
+
+.source-badge--simulation,
+.source-badge--historical,
+.scope-badge--attention {
+  color: var(--signal-attention);
+  border-color: var(--signal-attention);
+}
+
+.scope-badge--frozen {
+  color: var(--text-subtle);
+  border-style: dashed;
+}
+
+.scope-badge--muted {
+  color: var(--text-muted);
+}
+
+.source-section__run {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: none;
+  margin: 0;
+  color: var(--text-main);
+  font-size: 14px;
+  font-weight: 560;
+  white-space: nowrap;
+}
+
+.source-section__run--positive { color: var(--signal-ok); }
+.source-section__run--active { color: var(--text-strong); }
+.source-section__run--attention { color: var(--signal-incident); }
+.source-section__run--muted { color: var(--text-muted); font-weight: 520; }
+
+/* Le pouls à côté du mot de run : l'instrument qui tourne, sans texte —
+ *  la mesure du canal vit dans son tooltip et la couche Mesures. */
+.flow-pulse {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--text-subtle);
+}
+
+.flow-pulse--active {
+  background: var(--signal-ok);
+  animation: heartbeat-tick 2.4s ease-in-out infinite;
+}
+
+.flow-pulse--attention { background: var(--signal-attention); }
+.flow-pulse--muted { background: var(--text-subtle); }
+
+@keyframes heartbeat-tick {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* ------------------------------------------------------------------ */
+/* Diagramme de flux — l'objet héro : cinq nœuds, quatre traits         */
+/* ------------------------------------------------------------------ */
+
+.flow {
+  margin: 0;
+  padding-block: 2px 26px;
+}
+
+.flow__rail {
+  display: flex;
+  align-items: flex-start;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.flow__node {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: none;
+  width: 72px;
+}
+
+.flow__dot {
+  position: relative;
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  /* still — observée, relevé non courant : un gris franc et lisible,
+     pas un gris presque blanc qui disparaît. */
+  background: var(--text-subtle);
+  box-shadow: 0 0 0 3px var(--surface-subtle);
+}
+
+.flow__node--proven .flow__dot { background: var(--signal-ok); }
+.flow__node--check .flow__dot { background: var(--signal-attention); }
+.flow__node--down .flow__dot { background: var(--signal-incident); }
+
+.flow__node--off .flow__dot {
+  background: transparent;
+  border: 2px dashed var(--text-subtle);
+  box-shadow: none;
+}
+
+.flow__name {
+  margin-top: 10px;
+  color: var(--text-muted);
+  font: 500 10px/1.3 var(--font-mono);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.flow__node--down .flow__name { color: var(--signal-incident); }
+.flow__node--check .flow__name { color: var(--signal-attention); }
+
+/* Le trait — le flux de données. Il coule (point qui avance) quand le
+   relevé est frais, il est figé sinon ; il s'arrête net avant le nœud
+   en incident — la cassure — et il est en pointillés vers un nœud
+   jamais observé. */
+.flow__edge {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 56px;
+  height: 18px;
+}
+
+.flow__line {
+  position: absolute;
+  top: 8px;
+  left: -3px;
+  right: -3px;
+  height: 2px;
+  background: var(--text-subtle);
+}
+
+.flow__edge--live .flow__line { background: var(--signal-ok); }
+
+.flow__edge--faint .flow__line {
+  background: none;
+  border-top: 2px dashed var(--text-subtle);
+  opacity: 0.55;
+  height: 0;
+  top: 8px;
+}
+
+.flow__edge--cut .flow__line {
+  right: 32%;
+  background: var(--signal-incident);
+  opacity: 0.5;
+}
+
+.flow__runner {
+  position: absolute;
+  top: 7px;
+  left: 0;
+  width: 13px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--signal-ok);
+  opacity: 0;
+}
+
+.flow__edge--live .flow__runner {
+  animation: flow-run 2.1s linear infinite;
+}
+
+@keyframes flow-run {
+  0% { left: 0; opacity: 0; }
+  14% { opacity: 1; }
+  82% { opacity: 1; }
+  100% { left: calc(100% - 13px); opacity: 0; }
+}
+
+/* Repère de position journal sur le segment de lecture — receiver:seq
+   reste en tooltip, jamais écrit en grand. */
+.flow__tick {
+  position: absolute;
+  top: 13px;
+  left: 60%;
+  width: 7px;
+  height: 7px;
+  transform: rotate(45deg);
+  background: var(--text-strong);
+  cursor: default;
+}
+
+/* Relevé figé : tout s'atténue doucement (les tons « still » sont déjà des
+   gris francs — le figé se lit dans la couleur, pas dans l'effacement),
+   sauf la cassure qui reste marquée. */
+.flow--held .flow__node,
+.flow--held .flow__edge {
+  opacity: 0.82;
+}
+
+.flow--held .flow__node--down,
+.flow--held .flow__node--flagged,
+.flow--held .flow-flag {
+  opacity: 1;
+}
+
+.flow--held .flow__runner {
+  display: none;
+}
+
+/* Le mouvement ne sert qu'à dire « la donnée coule » : sous réduction
+   de mouvement, le flux reste tracé mais immobile — l'état se lit
+   toujours en couleur. */
+@media (prefers-reduced-motion: reduce) {
+  .flow__edge--live .flow__runner,
+  .flow-pulse--active,
+  .source-heartbeat--active .source-heartbeat__pulse {
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Drapeau d'incident — planté sur le nœud cassé ; la cause tient en    */
+/* quelques mots, le détail et le remède s'ouvrent au clic.             */
+/* ------------------------------------------------------------------ */
+
+.flow-flag__icon {
+  width: 10px;
+  height: 12px;
+  color: var(--signal-incident);
+}
+
+.flow-flag__pole {
+  stroke: currentColor;
+  stroke-width: 1.3;
+  fill: none;
+}
+
+.flow-flag__cloth {
+  fill: currentColor;
+}
+
+.flow__node .flow-flag__icon {
+  position: absolute;
+  top: -14px;
+  right: -9px;
+}
+
+.flow__node--check .flow-flag__icon {
+  color: var(--signal-attention);
+}
+
+.flow-flag {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 4;
+  min-width: 190px;
+}
+
+.flow-flag--left { left: 0; transform: none; }
+.flow-flag--right { left: auto; right: 0; transform: none; }
+
+.flow-flag > summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 9px;
+  color: var(--signal-incident);
+  font: 560 11px/1.4 var(--font-sans);
+  white-space: nowrap;
+  cursor: pointer;
+  list-style: none;
+}
+
+.flow-flag > summary::-webkit-details-marker { display: none; }
+
+.flow-flag > summary .flow-flag__icon {
+  position: static;
+  width: 9px;
+  height: 11px;
+  flex: none;
+}
+
+/* Drapeau « prête à reprendre » : ambre — la cause est résolue, il reste
+   une décision, pas une panne. */
+.flow-flag--ready > summary {
+  color: var(--signal-attention);
+}
+
+.flow-flag--ready > summary .flow-flag__icon {
+  color: var(--signal-attention);
+}
+
+.flow-flag .source-alert {
+  width: min(330px, 72vw);
+  margin-top: 7px;
+  background: var(--signal-attention-soft);
+  border: 1px solid var(--line-subtle);
+  border-left: 2px solid var(--signal-attention);
+}
+
+/* ------------------------------------------------------------------ */
+/* Sous le flux : sparkline de retard discrète + glyphe de sûreté       */
+/* ------------------------------------------------------------------ */
+
+.source-under {
+  display: flex;
+  align-items: flex-end;
+  gap: 22px;
+  margin-top: -10px;
+}
+
+.source-under .source-spark {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Continuité prouvée : une cochet, pas la phrase — le texte est en
+   tooltip et dans la couche Mesures. */
+.source-safety-glyph {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-bottom: 20px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 50%;
+  color: var(--text-subtle);
+  font: 600 12px/1 var(--font-sans);
+  cursor: default;
+}
+
+.source-safety-glyph--active {
+  color: var(--signal-ok);
+  border-color: var(--signal-ok);
+}
+
+.source-safety-glyph--attention {
+  color: var(--signal-incident);
+  border-color: var(--signal-incident);
+}
+
+/* ------------------------------------------------------------------ */
+/* Couche Mesures — tout le texte technique vit ici, à la demande       */
+/* ------------------------------------------------------------------ */
+
+.source-tech {
+  border-top: 1px solid var(--line-subtle);
+}
+
+.source-tech > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding-block: 10px;
+  color: var(--text-muted);
+  font: 500 11px/1.4 var(--font-mono);
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  list-style: none;
+}
+
+.source-tech > summary::-webkit-details-marker { display: none; }
+
+.source-tech > summary::before {
+  content: '▸';
+  color: var(--text-subtle);
+  font-size: 9px;
+}
+
+.source-tech[open] > summary::before {
+  content: '▾';
+}
+
+.source-tech > summary:hover .source-tech__label {
+  color: var(--text-strong);
+}
+
+.source-tech__label {
+  text-transform: uppercase;
+}
+
+.source-tech__age {
+  color: var(--text-subtle);
+}
+
+.source-tech__body {
+  display: grid;
+  gap: 12px;
+  padding: 4px 0 10px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Heartbeat — l'instrument qui tourne, pas la pilule « en direct »     */
+/* ------------------------------------------------------------------ */
+
+.source-heartbeat {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  column-gap: 8px;
+  min-height: 24px;
+  margin: 0;
+  color: var(--text-main);
+  font: 500 12px/1.4 var(--font-mono);
+  letter-spacing: 0.01em;
+}
+
+.source-heartbeat__pulse {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--signal-live);
+}
+
+.source-heartbeat--active .source-heartbeat__pulse {
+  animation: heartbeat-tick 2.4s ease-in-out infinite;
+}
+
+.source-heartbeat--attention .source-heartbeat__pulse {
+  background: var(--signal-attention);
+}
+
+.source-heartbeat--muted .source-heartbeat__pulse {
+  background: var(--text-subtle);
+}
+
+.source-heartbeat--attention {
+  color: var(--signal-attention);
+}
+
+.source-heartbeat--muted {
+  color: var(--text-muted);
+}
+
+.source-heartbeat__sep {
+  color: var(--text-subtle);
+}
+
+.source-heartbeat__channel {
+  color: var(--text-muted);
+}
+
+/* ------------------------------------------------------------------ */
+/* Alerte unique — sévérité, cause, depuis, remède                      */
+/* ------------------------------------------------------------------ */
+
+.source-alert {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 10px 14px 11px;
+  border-left: 2px solid var(--signal-attention);
+  background: var(--signal-attention-soft);
+}
+
+.source-alert__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.source-alert__head strong {
+  color: var(--text-strong);
+  font-weight: 580;
+}
+
+.source-alert__severity {
+  flex: none;
+  color: var(--signal-attention);
+  font: 600 10px/1.3 var(--font-mono);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.source-alert__since {
+  color: var(--text-muted);
+  font: 500 11px/1.4 var(--font-mono);
+  white-space: nowrap;
+}
+
+.source-alert__cause,
+.source-alert__remedy {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.source-alert__cause {
+  color: var(--text-main);
+}
+
+.source-alert__remedy {
+  color: var(--text-muted);
+}
+
+.source-alert__remedy::before {
+  content: '→ ';
+  color: var(--signal-attention);
+}
+
+.source-alert__resume {
+  display: grid;
+  gap: 2px;
+  margin: 6px 0 0;
+  padding-top: 6px;
+  border-top: 1px solid var(--line-subtle);
+}
+
+.source-alert__retry {
+  margin: 0;
+  color: var(--text-main);
+  font-size: 12px;
+  font-weight: 560;
+}
+
+.source-alert__flux {
+  margin: 0;
+  color: var(--text-muted);
+  font: 500 11px/1.5 var(--font-mono);
+}
+
+/* ------------------------------------------------------------------ */
+/* Sûreté — continuité + ancre de reprise (couche Mesures)              */
+/* ------------------------------------------------------------------ */
+
+.source-safety {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  font: 500 12px/1.45 var(--font-mono);
+  color: var(--text-muted);
+}
+
+.source-safety__label {
+  flex: none;
+  color: var(--text-subtle);
+  font: 600 10px/1.3 var(--font-mono);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.source-safety--active .source-safety__label { color: var(--signal-ok); }
+.source-safety--attention,
+.source-safety--attention .source-safety__label { color: var(--signal-attention); }
+
+/* ------------------------------------------------------------------ */
+/* Vitals + figé — dans la couche Mesures                               */
+/* ------------------------------------------------------------------ */
+
+.source-vitals .fact-spool__band {
+  padding: 10px 0 12px;
+  border-top-color: var(--line-subtle);
+  column-gap: 40px;
+  /* Colonnes bornées à la grille : min-content (valeur nowrap entière ou mot
+     le plus long du hint) en plancher — le hint de la colonne Source wrap au
+     lieu de déborder du bord de contenu. */
+  grid-template-columns: repeat(var(--spool-cols, 1), minmax(min-content, 1fr));
+}
+
+.source-vitals .fact-spool__field--dominant .fact-spool__value {
+  font: 560 15px/1.3 var(--font-mono);
+  letter-spacing: -0.01em;
+}
+
+.source-vitals .fact-spool__note {
+  color: var(--text-subtle);
+  font-style: italic;
+  padding-bottom: 8px;
+}
+
+.source-section--held .source-vitals {
+  opacity: 0.55;
+}
+
+.source-held {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.source-held__detail {
+  color: var(--text-subtle);
+  font-style: italic;
+}
+
+/* ------------------------------------------------------------------ */
+/* Tracé lag_series — la mesure qui s'arrête se voit                    */
+/* ------------------------------------------------------------------ */
+
+.source-spark {
+  margin: 0;
+}
+
+.source-spark svg {
+  display: block;
+  width: 100%;
+  height: 40px;
+}
+
+/* Points épars — chaque point est une mesure réelle ; aucun trait continu
+   n'interpole un trou de mesure. */
+
+.source-spark__point {
+  fill: var(--signal-live);
+}
+
+.source-spark--held .source-spark__point {
+  fill: var(--text-muted);
+}
+
+.source-spark__hatch-line {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.source-spark__scale {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 3px;
+  color: var(--text-subtle);
+  font: 500 10px/1.4 var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+.source-spark__label {
+  margin-right: 6px;
+  font: 500 10px/1.4 var(--font-mono);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.source-spark--empty {
+  margin: 0 0 20px;
+  color: var(--text-subtle);
+  font-size: 12px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Journal des observations — couche Mesures                            */
+/* ------------------------------------------------------------------ */
+
+.source-journal {
+  padding-top: 10px;
+  border-top: 1px solid var(--line-subtle);
+}
+
+.source-journal__title {
+  margin: 0 0 6px;
+  color: var(--text-muted);
+  font: 500 10px/1.4 var(--font-sans);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.source-journal__list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.source-journal__row {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  min-height: 24px;
+  font-size: 12px;
+}
+
+.source-journal__row time {
+  flex: none;
+  min-width: 15ch;
+  color: var(--text-subtle);
+  font: 500 11px/1.4 var(--font-mono);
+}
+
+.source-journal__row span {
+  color: var(--text-main);
+}
+
+.source-journal__row em {
+  margin-left: auto;
+  color: var(--text-subtle);
+  font: 500 10px/1.4 var(--font-mono);
+  font-style: normal;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* ------------------------------------------------------------------ */
+/* États indisponibles                                                  */
+/* ------------------------------------------------------------------ */
+
+.sources-view .operator-empty-state {
+  border-top: 1px solid var(--line-strong);
+  padding-block: 28px;
+}
+
+@media (max-width: 980px) {
+  .sources-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .source-vitals .fact-spool__band {
+    column-gap: 20px;
+  }
+}

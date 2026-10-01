@@ -1,0 +1,12 @@
+{
+  "capture_freshness_seconds": 120,
+  "s3_freshness_seconds": 180,
+  "destination_freshness_seconds": 300,
+  "checkpoint_lag_sequences": 1000,
+  "delivery_latency_p95_seconds": 60,
+  "delivery_latency_p99_seconds": 180,
+  "s3_requests_24h": 500000,
+  "snowpipe_pending_files": 10,
+  "snowflake_credits_24h": 1.0,
+  "observability_freshness_seconds": 900
+}

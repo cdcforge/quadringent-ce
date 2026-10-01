@@ -1,0 +1,30 @@
+{
+  "required_pair": [
+    "addrs1_sql_3769",
+    "custom1_sql_3769"
+  ],
+  "exclude": [
+    "calend_sql_3763",
+    "calend_rj_3763"
+  ],
+  "windows": [
+    {
+      "id": "addrs1_sql_3769",
+      "table": "ADDRS1",
+      "mode": "sql",
+      "receiver": "DEMOJRN3769",
+      "start_sequence": 210000000,
+      "published_events": 22,
+      "receiver_metadata_limit": 20
+    },
+    {
+      "id": "custom1_sql_3769",
+      "table": "CUSTOM1",
+      "mode": "sql",
+      "receiver": "DEMOJRN3769",
+      "start_sequence": 210000000,
+      "published_events": 40,
+      "receiver_metadata_limit": 20
+    }
+  ]
+}

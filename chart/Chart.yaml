@@ -1,0 +1,8 @@
+apiVersion: v2
+name: quadringent
+description: Capture de changements IBM i vers Snowflake via journal DB2 et stockage brut S3 ou GCS.
+type: application
+version: 0.2.3
+appVersion: "0.2.3"
+maintainers:
+  - name: ClementMJ

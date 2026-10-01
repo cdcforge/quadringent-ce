@@ -1,0 +1,358 @@
+/* Composants de fondation : StatusWord, MetricTile, BandedTable,
+   FunctionKeyBar, ActionButton. Texte d'interface en IBM Plex Sans
+   (--font-plex-sans), valeurs/identifiants en IBM Plex Mono (--font-plex-mono,
+   alias de --font-mono). Sobre : pas de dégradé, pas d'ombre lourde. */
+
+/* --- StatusWord --- */
+
+.status-word {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-plex-sans);
+  font-size: var(--t-small);
+  font-weight: var(--w-medium);
+  color: var(--ink-2);
+}
+
+.status-word--compact { font-size: var(--t-micro); gap: var(--space-1); }
+
+.status-word__mark {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.status-word--live .status-word__mark { background: var(--signal-live); }
+.status-word--copying .status-word__mark { background: var(--signal-proven); }
+.status-word--paused .status-word__mark { background: var(--ink-4); }
+.status-word--attention .status-word__mark { background: var(--signal-attention); }
+.status-word--stopped .status-word__mark { background: var(--signal-incident); }
+
+.status-word--live .status-word__label { color: var(--signal-live); }
+.status-word--attention .status-word__label { color: var(--signal-attention); }
+.status-word--stopped .status-word__label { color: var(--signal-incident); }
+
+/* --- MetricTile --- */
+
+.metric-tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  background: var(--paper-sunk);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-panel);
+}
+
+.metric-tile__label {
+  font-family: var(--font-plex-sans);
+  font-size: var(--t-micro);
+  font-weight: var(--w-medium);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.metric-tile__value {
+  font-size: var(--t-num);
+  font-weight: var(--w-medium);
+  color: var(--ink-1);
+  font-variant-numeric: tabular-nums slashed-zero;
+}
+
+.metric-tile__value--absent { color: var(--ink-4); font-weight: var(--w-regular); }
+
+.metric-tile__unit {
+  font-size: var(--t-small);
+  font-weight: var(--w-regular);
+  color: var(--ink-3);
+  margin-left: var(--space-1);
+}
+
+.metric-tile__provenance {
+  font-family: var(--font-plex-sans);
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+}
+
+.metric-tile__provenance--mesure { color: var(--signal-ok); }
+.metric-tile__provenance--estime { color: var(--signal-attention); }
+.metric-tile__provenance--absent { color: var(--ink-4); }
+
+/* --- BandedTable --- */
+
+.banded-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-plex-sans);
+  font-size: var(--t-small);
+}
+
+.banded-table thead th {
+  text-align: left;
+  font-size: var(--t-micro);
+  font-weight: var(--w-medium);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--rule-firm);
+}
+
+.banded-table__col--numeric { text-align: right; }
+
+.banded-table tbody tr {
+  background: var(--band-odd);
+}
+
+.banded-table tbody tr:nth-child(even) {
+  background: var(--band-even);
+}
+
+.banded-table tbody tr:hover {
+  background: var(--band-hover);
+}
+
+.banded-table tbody tr:focus-visible {
+  background: var(--band-focus);
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.banded-table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink-2);
+}
+
+.banded-table td.mono {
+  font-family: var(--font-plex-mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+}
+
+.banded-table__col--actions { text-align: right; white-space: nowrap; }
+
+/* --- FunctionKeyBar --- */
+
+.function-key-bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  background: var(--paper-sunk);
+  border-top: 1px solid var(--rule);
+  padding: var(--space-2) var(--space-4);
+  /* Espace réservé avant la barre : sans lui, le dernier contenu (dernière
+     ligne d'un tableau, bouton primaire de l'assistant) touche la barre
+     collante à zéro pixel une fois arrivé au bas de la page — jamais assez
+     de recul pour la lire confortablement. */
+  margin-top: var(--space-6);
+}
+
+.function-key-bar ul {
+  display: flex;
+  gap: var(--space-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.function-key-bar__key {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-family: var(--font-plex-sans);
+  font-size: var(--t-small);
+  color: var(--ink-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--r-sm);
+}
+
+.function-key-bar__key:hover:not(:disabled) { background: var(--surface-quiet); }
+.function-key-bar__key:disabled { color: var(--ink-4); cursor: default; }
+
+.function-key-bar__code {
+  font-family: var(--font-plex-mono);
+  font-weight: var(--w-medium);
+  color: var(--ink-3);
+  border: 1px solid var(--rule-firm);
+  border-radius: var(--r-sm);
+  padding: 0 4px;
+  font-size: var(--t-micro);
+}
+
+/* --- ActionButton --- */
+
+.action-button {
+  font-family: var(--font-plex-sans);
+  font-size: var(--t-small);
+  font-weight: var(--w-medium);
+  color: var(--ink-2);
+  background: var(--paper-sunk);
+  border: 1px solid var(--rule-firm);
+  border-radius: var(--radius-panel);
+  padding: var(--space-2) var(--space-4);
+  min-height: 44px;
+}
+
+.action-button:hover:not(:disabled) { background: var(--surface-quiet); }
+.action-button:disabled { color: var(--ink-4); cursor: not-allowed; }
+
+.action-button--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.action-button--primary:hover:not(:disabled) { filter: brightness(1.05); }
+
+/* Un bouton primaire désactivé retrouve le style « quiet » désactivé —
+   sans cette règle, `.action-button:disabled` ne touche que la couleur du
+   texte et laisse le fond bleu plein, illisible (texte gris sur bleu). */
+.action-button--primary:disabled {
+  background: var(--surface-quiet);
+  border-color: var(--rule-firm);
+  color: var(--ink-4);
+}
+
+.action-button__confirm {
+  border: 1px solid var(--rule-firm);
+  border-radius: var(--radius-panel);
+  padding: var(--space-5);
+  max-width: 360px;
+  color: var(--ink-1);
+  background: var(--paper-sunk);
+  box-shadow: var(--shadow-panel);
+}
+
+.action-button__confirm::backdrop { background: rgba(0, 0, 0, 0.35); }
+
+.action-button__confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+/* --- MetricChart --- */
+
+.metric-chart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--paper-sunk);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-panel);
+}
+
+.metric-chart__label {
+  font-family: var(--font-plex-sans);
+  font-size: var(--t-micro);
+  font-weight: var(--w-medium);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.metric-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+}
+
+.metric-chart__line {
+  fill: none;
+  stroke: var(--ink-2);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.metric-chart__area {
+  stroke: none;
+  fill: var(--ink-2);
+  opacity: 0.08;
+}
+
+.metric-chart__scale {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-plex-mono);
+  font-size: var(--t-micro);
+  color: var(--ink-4);
+}
+
+.metric-chart__value {
+  font-size: var(--t-num);
+  font-weight: var(--w-medium);
+  color: var(--ink-1);
+  font-variant-numeric: tabular-nums slashed-zero;
+}
+
+.metric-chart__unit {
+  font-size: var(--t-small);
+  font-weight: var(--w-regular);
+  color: var(--ink-3);
+  margin-left: var(--space-1);
+}
+
+.metric-chart--absent .metric-chart__absent {
+  color: var(--ink-4);
+  font-size: var(--t-small);
+}
+
+/* --- Page de référence (développement uniquement) --- */
+
+.foundation-reference {
+  min-height: 100vh;
+  background: var(--paper);
+  color: var(--ink-1);
+  font-family: var(--font-plex-sans);
+  padding: var(--space-7);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-7);
+}
+
+.foundation-reference__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-5);
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: var(--space-5);
+}
+
+.foundation-reference h1 { font-size: var(--t-lead); font-weight: var(--w-strong); margin: var(--space-1) 0; }
+.foundation-reference h2 { font-size: var(--t-body); font-weight: var(--w-strong); margin-bottom: var(--space-3); }
+
+.foundation-reference__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+.foundation-reference__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+  max-width: 720px;
+}
+
+.foundation-reference__log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-plex-mono);
+  font-size: var(--t-small);
+  color: var(--ink-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}

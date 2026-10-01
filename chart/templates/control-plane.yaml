@@ -1,0 +1,783 @@
+{{- if .Values.controlPlane.enabled }}
+{{- $site := .Values.site }}
+{{- /* Backend de stockage du site : détermine l'identité cloud attendue par
+  le ServiceAccount (IRSA AWS ou Workload Identity GCP). Voir gap (b) de
+  docs/product/install-default.md. */ -}}
+{{- $storageBackend := .Values.storage.backend | default "aws" }}
+{{- if .Values.controlPlane.licenseKey }}
+{{- fail "controlPlane.licenseKey est obsolète : retirer cette valeur, aucune licence commerciale requise" }}
+{{- end }}
+{{- $proofLane := printf "%s/%s" $site.rawPrefixRoot (lower $site.proofTable) }}
+{{- $pipelineId := printf "%s-%s" .Values.deployment.environment (lower $site.proofTable) }}
+{{- if not (regexMatch "^sha256:[a-f0-9]{64}$" .Values.controlPlane.image.digest) }}
+{{- fail "controlPlane.image.digest doit être un digest sha256 immuable" }}
+{{- end }}
+{{- $allowedRepos := .Values.controlPlane.image.allowedRepositories | default (list "ghcr.io/quadringent/quadringent") }}
+{{- if not (has .Values.controlPlane.image.repository $allowedRepos) }}
+{{- fail "controlPlane.image.repository doit figurer dans controlPlane.image.allowedRepositories" }}
+{{- end }}
+{{- /* Second conteneur v2 (FastAPI/uvicorn) du même Pod, v1 conservée intacte
+  à côté — voir docs/api-v2.md. Son magasin est soit le Postgres embarqué
+  (postgres.yaml), soit un Postgres géré externe (mode expert). */ -}}
+{{- $v2 := .Values.controlPlane.v2 }}
+{{- $externalDb := .Values.externalDatabase }}
+{{- $v2Repository := $v2.image.repository | default .Values.controlPlane.image.repository }}
+{{- $v2Digest := $v2.image.digest | default .Values.controlPlane.image.digest }}
+{{- if $v2.enabled }}
+{{- if and .Values.postgres.enabled (or $externalDb.url $externalDb.existingSecret) }}
+{{- fail "postgres.enabled et externalDatabase sont mutuellement exclusifs" }}
+{{- end }}
+{{- if and (not .Values.postgres.enabled) (not $externalDb.url) (not $externalDb.existingSecret) }}
+{{- fail "controlPlane.v2.enabled exige postgres.enabled=true ou externalDatabase.url/existingSecret" }}
+{{- end }}
+{{- if le (int $v2.port) 0 }}
+{{- fail "controlPlane.v2.port doit être > 0" }}
+{{- end }}
+{{- if eq (int $v2.port) (int .Values.controlPlane.port) }}
+{{- fail "controlPlane.v2.port doit différer de controlPlane.port (même Pod)" }}
+{{- end }}
+{{- if not (regexMatch "^sha256:[a-f0-9]{64}$" $v2Digest) }}
+{{- fail "controlPlane.v2.image.digest (ou controlPlane.image.digest par défaut) doit être un digest sha256 immuable" }}
+{{- end }}
+{{- end }}
+{{ include "quadringent.siteGuards" . }}
+{{- if ne (int .Values.controlPlane.replicaCount) 1 }}
+{{- fail "controlPlane.replicaCount doit valoir 1" }}
+{{- end }}
+{{- if empty .Values.controlPlane.source }}
+{{- fail "controlPlane.source est obligatoire lorsque controlPlane.enabled=true" }}
+{{- end }}
+{{- $fleetStateDir := "/var/lib/quadringent-fleet" }}
+{{- $fleetConsoleSource := printf "live:%s:s3://%s/%s/fleet/console-snapshot.json" $site.id $site.rawBucket $site.rawPrefixRoot }}
+{{- $fleetConsoleProofSource := printf "live:%s:s3://%s/%s/fleet/console-proof.json" $site.id $site.rawBucket $site.rawPrefixRoot }}
+{{- $fleetConsoleFileSource := printf "live:%s:file://%s/fleet-console.json" $site.id $fleetStateDir }}
+{{- if not (or
+    (hasPrefix (printf "live:%s:s3://%s/%s/proofs/" $pipelineId $site.rawBucket $proofLane) .Values.controlPlane.source)
+    (eq .Values.controlPlane.source $fleetConsoleSource)
+    (eq .Values.controlPlane.source $fleetConsoleProofSource)
+    (eq .Values.controlPlane.source $fleetConsoleFileSource)) }}
+{{- fail "controlPlane.source doit rester dans la preuve déclarée du site" }}
+{{- end }}
+{{- if le (int .Values.controlPlane.port) 0 }}
+{{- fail "controlPlane.port doit être > 0" }}
+{{- end }}
+{{- $windowProof := .Values.controlPlane.windowProof | default "" }}
+{{- if $windowProof }}
+{{- if not (kindIs "string" $windowProof) }}
+{{- fail "controlPlane.windowProof doit être une URI S3" }}
+{{- end }}
+{{- $proofBucket := regexReplaceAll "[.]" $site.rawBucket "[.]" }}
+{{- if not (regexMatch (printf "^s3://%s/%s/runs/[a-z0-9][a-z0-9-]{0,79}/(windows/[a-z0-9][a-z0-9-]{0,79}/destination[.]json|window-chain[.]json)$" $proofBucket $proofLane) $windowProof) }}
+{{- fail "controlPlane.windowProof doit cibler destination.json ou window-chain.json du run de preuve déclaré" }}
+{{- end }}
+{{- end }}
+{{- if le (float64 .Values.controlPlane.refreshSeconds) (float64 0) }}
+{{- fail "controlPlane.refreshSeconds doit être > 0" }}
+{{- end }}
+{{- if not .Values.controlPlane.serviceAccount.create }}
+{{- fail "controlPlane.serviceAccount.create doit rester true" }}
+{{- end }}
+{{- $auth := .Values.controlPlane.auth | default dict }}
+{{- if $auth.enabled }}
+{{- if and (empty $auth.operatorGroups) (empty $auth.adminGroups) }}
+{{- fail "controlPlane.auth.enabled exige operatorGroups ou adminGroups non vides" }}
+{{- end }}
+{{- if empty $auth.userHeader }}
+{{- fail "controlPlane.auth.userHeader est obligatoire lorsque l'authentification est activée" }}
+{{- end }}
+{{- if empty $auth.groupsHeader }}
+{{- fail "controlPlane.auth.groupsHeader est obligatoire lorsque l'authentification est activée" }}
+{{- end }}
+{{- end }}
+{{- $host := .Values.controlPlane.host | default "127.0.0.1" }}
+{{- if and (ne $host "127.0.0.1") (ne $host "localhost") (not $auth.enabled) }}
+{{- fail "controlPlane.host non loopback exige controlPlane.auth.enabled=true" }}
+{{- end }}
+{{- /* Le nom du SA fait partie du contrat IRSA du site (la trust policy lie
+  le sub exact) : le site le déclare donc, borné DNS-1123. */ -}}
+{{- if not (regexMatch "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$" (required "controlPlane.serviceAccount.name est obligatoire" .Values.controlPlane.serviceAccount.name)) }}
+{{- fail "controlPlane.serviceAccount.name doit être un nom Kubernetes borné" }}
+{{- end }}
+{{- /* Identité cloud du ServiceAccount : IRSA (ARN IAM) sur AWS, Workload
+  Identity (compte de service GCP) sur GCS. Les deux champs restent mutuellement
+  exclusifs — déclarer celui du backend inactif est un refus explicite plutôt
+  qu'une valeur ignorée en silence. */ -}}
+{{- if eq $storageBackend "aws" }}
+{{- if .Values.controlPlane.serviceAccount.gcpServiceAccount }}
+{{- fail "controlPlane.serviceAccount.gcpServiceAccount ne s'applique qu'à storage.backend=gcs" }}
+{{- end }}
+{{- if not (regexMatch (printf "^arn:aws:iam::%s:role/[A-Za-z0-9+=,.@_/-]{1,128}$" $site.awsAccountId) (required "controlPlane.serviceAccount.roleArn est obligatoire lorsque storage.backend=aws" .Values.controlPlane.serviceAccount.roleArn)) }}
+{{- fail "controlPlane.serviceAccount.roleArn doit rester une identité read-only du compte déclaré" }}
+{{- end }}
+{{- else if eq $storageBackend "gcs" }}
+{{- if .Values.controlPlane.serviceAccount.roleArn }}
+{{- fail "controlPlane.serviceAccount.roleArn ne s'applique qu'à storage.backend=aws" }}
+{{- end }}
+{{- if not (regexMatch "^[a-zA-Z0-9-]{6,30}@[a-zA-Z0-9.-]{1,128}\\.iam\\.gserviceaccount\\.com$" (required "controlPlane.serviceAccount.gcpServiceAccount est obligatoire lorsque storage.backend=gcs" .Values.controlPlane.serviceAccount.gcpServiceAccount)) }}
+{{- fail "controlPlane.serviceAccount.gcpServiceAccount doit être une adresse de compte de service GCP valide" }}
+{{- end }}
+{{- end }}
+{{- $launch := .Values.controlPlane.launch.enabled }}
+{{- /* Jeton d'API Kubernetes : lancement v1 ou exécuteur/diagnostics v2. */}}
+{{- $kubeApi := or $launch .Values.controlPlane.v2.enabled }}
+{{- $fleetPersistence := get (.Values.controlPlane.fleetState | default dict) "persistence" | default dict }}
+{{- $fleetStatePersistent := and $launch (get $fleetPersistence "enabled" | default false) }}
+{{- $costSource := .Values.controlPlane.infrastructureCostsSource | default "" }}
+{{- if and $costSource (or (not $fleetStatePersistent) (ne $costSource (printf "file://%s/infrastructure-costs.json" $fleetStateDir))) }}
+{{- fail "controlPlane.infrastructureCostsSource exige le fichier de coûts du PVC flotte persistant" }}
+{{- end }}
+{{- if $launch }}
+{{- if not .Values.controlPlane.launch.jobTemplate }}
+{{- fail "controlPlane.launch.jobTemplate est obligatoire lorsque le lancement est activé" }}
+{{- end }}
+{{- if not .Values.controlPlane.launch.fleetCatalog }}
+{{- fail "controlPlane.launch.fleetCatalog est obligatoire lorsque le lancement est activé" }}
+{{- end }}
+{{- $templateDoc := .Values.controlPlane.launch.jobTemplate | fromJson }}
+{{- if not $templateDoc }}
+{{- fail "controlPlane.launch.jobTemplate doit être un document JSON valide" }}
+{{- end }}
+{{- if ne (get $templateDoc "format_version" | default "") "quadringent-job-template-v1" }}
+{{- fail "controlPlane.launch.jobTemplate doit porter format_version quadringent-job-template-v1" }}
+{{- end }}
+{{- $catalogDoc := .Values.controlPlane.launch.fleetCatalog | fromJson }}
+{{- if not $catalogDoc }}
+{{- fail "controlPlane.launch.fleetCatalog doit être un document JSON valide" }}
+{{- end }}
+{{- if ne (get $catalogDoc "format_version" | default "") "quadringent-fleet-catalog-v1" }}
+{{- fail "controlPlane.launch.fleetCatalog doit porter format_version quadringent-fleet-catalog-v1" }}
+{{- end }}
+{{- if not .Values.controlPlane.launch.fleetSidecar }}
+{{- fail "controlPlane.launch.fleetSidecar est obligatoire lorsque le lancement est activé" }}
+{{- end }}
+{{- $sidecarDoc := .Values.controlPlane.launch.fleetSidecar | fromJson }}
+{{- if not $sidecarDoc }}
+{{- fail "controlPlane.launch.fleetSidecar doit être un document JSON valide" }}
+{{- end }}
+{{- if ne (get $sidecarDoc "format_version" | default "") "quadringent-fleet-ui-sidecar-v1" }}
+{{- fail "controlPlane.launch.fleetSidecar doit porter format_version quadringent-fleet-ui-sidecar-v1" }}
+{{- end }}
+{{- if $fleetStatePersistent }}
+{{- if not (regexMatch "^[0-9]+([.][0-9]+)?(Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E)?$" (toString (get $fleetPersistence "size" | default ""))) }}
+{{- fail "controlPlane.fleetState.persistence.size doit être une quantité Kubernetes (ex. 256Mi)" }}
+{{- end }}
+{{- $refreshSeconds := .Values.controlPlane.catalogRefreshSeconds | default 300 }}
+{{- if or (lt (int $refreshSeconds) 0) (gt (int $refreshSeconds) 86400) }}
+{{- fail "controlPlane.catalogRefreshSeconds doit rester entre 0 et 86400 (0 = relevé désactivé)" }}
+{{- end }}
+{{- end }}
+{{- end }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.controlPlane.serviceAccount.name }}
+  annotations:
+    {{- if eq $storageBackend "aws" }}
+    eks.amazonaws.com/role-arn: {{ .Values.controlPlane.serviceAccount.roleArn | quote }}
+    {{- else if and (eq $storageBackend "gcs") (eq .Values.gcpIdentityMode "gke-workload-identity") }}
+    iam.gke.io/gcp-service-account: {{ .Values.controlPlane.serviceAccount.gcpServiceAccount | quote }}
+    {{- end }}
+    quadringent.io/environment: {{ .Values.deployment.environment }}
+    quadringent.io/production-promotion: forbidden
+    {{- with .Values.controlPlane.serviceAccount.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  labels:
+    {{- include "quadringent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: control-plane
+automountServiceAccountToken: {{ $kubeApi }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "quadringent.fullname" . }}-control-plane
+  annotations:
+    quadringent.io/environment: {{ .Values.deployment.environment }}
+    quadringent.io/production-promotion: forbidden
+  labels:
+    {{- include "quadringent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: control-plane
+spec:
+  replicas: {{ .Values.controlPlane.replicaCount }}
+  {{- if $fleetStatePersistent }}
+  # Volume RWO sur un seul réplica : Recreate évite le blocage multi-attache
+  # d'une rolling update dont le nouveau pod serait placé sur un autre nœud.
+  # rollingUpdate nul explicitement : l'ancien manifeste RollingUpdate doit
+  # disparaître du patch, sinon l'API refuse le changement de type.
+  strategy:
+    type: Recreate
+    rollingUpdate: null
+  {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "quadringent.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: control-plane
+  template:
+    metadata:
+      labels:
+        {{- include "quadringent.labels" . | nindent 8 }}
+        app.kubernetes.io/component: control-plane
+    spec:
+      serviceAccountName: {{ .Values.controlPlane.serviceAccount.name }}
+      automountServiceAccountToken: {{ $kubeApi }}
+      {{- if $launch }}
+      securityContext:
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+      {{- end }}
+      {{- with .Values.image.pullSecret }}
+      imagePullSecrets:
+        - name: {{ . }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: control-plane
+          image: {{ printf "%s@%s" .Values.controlPlane.image.repository .Values.controlPlane.image.digest }}
+          imagePullPolicy: {{ .Values.controlPlane.image.pullPolicy }}
+          command:
+            - python
+            - /app/quadringent_control_plane.py
+          args:
+            - --ui-dist
+            - /app/ui
+            {{- if $costSource }}
+            - --infrastructure-costs-source
+            - {{ $costSource | quote }}
+            {{- end }}
+            - --source
+            - {{ .Values.controlPlane.source | quote }}
+            {{- if $windowProof }}
+            - --window-proof
+            - {{ printf "%s=%s" $pipelineId $windowProof | quote }}
+            {{- end }}
+            - --environment
+            - {{ .Values.deployment.environment | quote }}
+            - --host
+            - {{ $host | quote }}
+            - --port
+            - {{ .Values.controlPlane.port | quote }}
+            - --refresh-seconds
+            - {{ .Values.controlPlane.refreshSeconds | quote }}
+            {{- if $v2.enabled }}
+            {{- /* Même Pod, loopback : v1 relaie /v2 et /mcp vers le
+              conteneur control-plane-v2 — l'opérateur n'ouvre qu'un tunnel
+              sur controlPlane.port (voir docs/api-v2.md, section accès). */}}
+            - --v2-upstream-port
+            - {{ int $v2.port | quote }}
+            {{- end }}
+            {{- if $auth.enabled }}
+            - --auth-user-header
+            - {{ $auth.userHeader | quote }}
+            - --auth-groups-header
+            - {{ $auth.groupsHeader | quote }}
+            - --auth-operator-groups
+            - {{ join "," ($auth.operatorGroups | default list) | quote }}
+            - --auth-admin-groups
+            - {{ join "," ($auth.adminGroups | default list) | quote }}
+            {{- end }}
+            {{- if $launch }}
+            {{- $launchFleetSource := printf "live:%s:%s" $site.id (.Values.controlPlane.launch.fleetConsoleSource | default (printf "s3://%s/%s/fleet/console-snapshot.json" $site.rawBucket $site.rawPrefixRoot)) }}
+            {{- if ne .Values.controlPlane.source $launchFleetSource }}
+            - --source
+            - {{ $launchFleetSource | quote }}
+            {{- end }}
+            - --fleet-proof
+            {{- if $fleetStatePersistent }}
+            - {{ printf "%s=file://%s/fleet-sidecar.json" $site.id $fleetStateDir | quote }}
+            {{- else }}
+            - {{ printf "%s=file:///etc/quadringent-launch/fleet-sidecar.json" $site.id | quote }}
+            {{- end }}
+            - --fleet-catalog
+            - /etc/quadringent-launch/fleet-catalog.json
+            - --fleet-state-dir
+            - /var/lib/quadringent-fleet
+            - --fleet-job-template
+            - /etc/quadringent-launch/job-template.json
+            - --fleet-raw-prefix-root
+            - {{ $site.rawPrefixRoot | quote }}
+            {{- if $fleetStatePersistent }}
+            # L'état domaine durable vit sur le PVC — la projection l'injecte
+            # comme vérité des phases quand le pilote l'a écrit.
+            - --fleet-run
+            - {{ printf "%s=file://%s/fleet-run.json" $site.id $fleetStateDir | quote }}
+            {{- end }}
+            {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "quadringent.fullname" . }}-site
+            {{- if $launch }}
+            - configMapRef:
+                name: {{ include "quadringent.fullname" . }}-tuning
+            {{- end }}
+          env:
+            {{- if eq $storageBackend "aws" }}
+            - name: AWS_REGION
+              value: {{ .Values.aws.region | quote }}
+            - name: AWS_DEFAULT_REGION
+              value: {{ .Values.aws.region | quote }}
+            {{- end }}
+            {{- if $launch }}
+            - name: ISERIES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "ibmi.passwordSecret.name est obligatoire" .Values.ibmi.passwordSecret.name }}
+                  key: {{ required "ibmi.passwordSecret.key est obligatoire" .Values.ibmi.passwordSecret.key }}
+            {{- end }}
+            {{- if $fleetStatePersistent }}
+            # Relevé périodique du catalogue : le sidecar régénéré et le plan
+            # vivent sur le PVC ; sans lui le ConfigMap figeait tout au boot.
+            - name: QUADRINGENT_FLEET_STATE_PERSISTENT
+              value: "true"
+            - name: QUADRINGENT_CATALOG_REFRESH_SECONDS
+              value: {{ int .Values.controlPlane.catalogRefreshSeconds | quote }}
+            # Pilote de progression : mesures → run domaine → fleet-run.json.
+            - name: QUADRINGENT_FLEET_PROGRESSION_SECONDS
+              value: {{ int (.Values.controlPlane.progressionSeconds | default 30) | quote }}
+            {{- end }}
+            {{- if and $auth.enabled $auth.proxySecret $auth.proxySecret.secretName }}
+            - name: QUADRINGENT_AUTH_PROXY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $auth.proxySecret.secretName | quote }}
+                  key: {{ required "controlPlane.auth.proxySecret.secretKey est obligatoire" $auth.proxySecret.secretKey | quote }}
+            {{- end }}
+            {{- if .Values.controlPlane.telemetry.enabled }}
+            - name: QUADRINGENT_TELEMETRY
+              value: "on"
+            - name: QUADRINGENT_STATE_DIR
+              value: /var/lib/quadringent-telemetry
+            {{- with .Values.controlPlane.telemetry.endpoint }}
+            - name: QUADRINGENT_TELEMETRY_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
+            - name: QUADRINGENT_VERSION
+              value: {{ .Chart.AppVersion | default .Chart.Version | quote }}
+          readinessProbe:
+            exec:
+              command:
+                - python
+                - -S
+                - /app/quadringent_healthcheck.py
+                - {{ .Values.controlPlane.port | quote }}
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -S
+                - /app/quadringent_healthcheck.py
+                - {{ .Values.controlPlane.port | quote }}
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.controlPlane.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            capabilities:
+              drop: ["ALL"]
+          {{- if or $launch .Values.controlPlane.telemetry.enabled }}
+          volumeMounts:
+            {{- if $launch }}
+            {{- include "quadringent.caMount" . | nindent 12 }}
+            - name: launch-config
+              mountPath: /etc/quadringent-launch
+              readOnly: true
+            - name: fleet-state
+              mountPath: /var/lib/quadringent-fleet
+            {{- end }}
+            {{- if .Values.controlPlane.telemetry.enabled }}
+            - name: telemetry-state
+              mountPath: /var/lib/quadringent-telemetry
+            {{- end }}
+          {{- end }}
+        {{- if $v2.enabled }}
+        - name: control-plane-v2
+          image: {{ printf "%s@%s" $v2Repository $v2Digest }}
+          imagePullPolicy: {{ .Values.controlPlane.image.pullPolicy }}
+          {{- if .Values.postgres.enabled }}
+          # Mot de passe distinct du reste de la config (Secret dédié) : le
+          # DSN complet ne peut pas être une simple valeur, il est composé au
+          # démarrage à partir des variables individuelles ci-dessous.
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -eu
+              export QUADRINGENT_V2_DATABASE_URL="postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}"
+              exec python /app/quadringent_control_plane_v2.py --host "{{ .Values.controlPlane.host | default "127.0.0.1" }}" --port "{{ int $v2.port }}"
+          {{- else }}
+          command:
+            - python
+            - /app/quadringent_control_plane_v2.py
+            - --host
+            - {{ .Values.controlPlane.host | default "127.0.0.1" | quote }}
+            - --port
+            - {{ int $v2.port | quote }}
+          {{- end }}
+          env:
+            {{- if .Values.postgres.enabled }}
+            - name: POSTGRES_HOST
+              value: {{ include "quadringent.postgresServiceName" . | quote }}
+            - name: POSTGRES_PORT
+              value: {{ .Values.postgres.port | quote }}
+            - name: POSTGRES_DB
+              value: {{ .Values.postgres.database | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.postgres.username | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "quadringent.postgresSecretName" . }}
+                  key: POSTGRES_PASSWORD
+            {{- else if $externalDb.url }}
+            - name: QUADRINGENT_V2_DATABASE_URL
+              value: {{ $externalDb.url | quote }}
+            {{- else }}
+            - name: QUADRINGENT_V2_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $externalDb.existingSecret | quote }}
+                  key: {{ $externalDb.existingSecretKey | default "url" | quote }}
+            {{- end }}
+            - name: QUADRINGENT_V2_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "quadringent.fullname" . }}-v2-secrets
+                  key: SECRET_KEY
+            - name: QUADRINGENT_V2_TOKEN_PEPPER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "quadringent.fullname" . }}-v2-secrets
+                  key: TOKEN_PEPPER
+            {{- with $v2.orgId }}
+            - name: QUADRINGENT_V2_ORG_ID
+              value: {{ . | quote }}
+            {{- end }}
+            # Sonde de source et découverte de tables (chantier « prod-wiring ») :
+            # Jobs Kubernetes éphémères avec l'image de capture (Java/JTOpen),
+            # la seule à savoir parler à IBM i — voir
+            # ``quadringent_control_plane.v2.executor.diagnostic_jobs``. Câblée
+            # seulement en cluster (``KUBERNETES_SERVICE_HOST`` présent) ; en
+            # local/test, ``entrypoint.py`` ne branche rien.
+            - name: QUADRINGENT_V2_CAPTURE_IMAGE
+              value: {{ printf "%s@%s" .Values.image.repository .Values.image.digest | quote }}
+            # Exécuteur de pipeline (chantier « pipeline-exec ») : démarrer/
+            # mettre en pause/reprendre un pipeline crée des Deployments/Jobs
+            # réels avec cette identité — jamais celle du control plane
+            # (``controlPlane.serviceAccount``), qui n'a pas les droits
+            # d'écriture S3/GCS/DynamoDB du site. Vide (ServiceAccount du
+            # runtime de capture non déclaré) : ``entrypoint.py`` laisse
+            # l'exécuteur débranché, comme sans ``QUADRINGENT_V2_CAPTURE_IMAGE``
+            # — voir ``quadringent_control_plane.v2.entrypoint.build_pipeline_executor``.
+            # Chargeur Snowflake (historique + miroir) : même image que ce
+            # conteneur, réconcilié en Deployment par l'exécuteur.
+            - name: QUADRINGENT_V2_LOADER_IMAGE
+              value: {{ printf "%s@%s" $v2Repository $v2Digest | quote }}
+            - name: QUADRINGENT_V2_CAPTURE_SERVICE_ACCOUNT
+              value: {{ .Values.serviceAccount.name | quote }}
+            - name: QUADRINGENT_V2_READER_TIMEOUT_SECONDS
+              value: {{ .Values.tuning.readerTimeoutSeconds | quote }}
+            - name: QUADRINGENT_V2_READER_POLL_SECONDS
+              value: {{ $v2.readerPollSeconds | quote }}
+            - name: QUADRINGENT_V2_LOADER_POLL_SECONDS
+              value: {{ $v2.loaderPollSeconds | quote }}
+            - name: QUADRINGENT_V2_LOADER_HISTORY_MODE
+              value: {{ $v2.loaderHistoryMode | quote }}
+            - name: QUADRINGENT_V2_LOADER_FLUSH_EACH_BATCH
+              value: {{ $v2.loaderFlushEachBatch | quote }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "quadringent.fullname" . }}-site
+          ports:
+            - name: cp-v2
+              containerPort: {{ int $v2.port }}
+          readinessProbe:
+            # Écoute en loopback : sonde exécutée dans le Pod (le kubelet
+            # sonderait l'IP du Pod, jamais 127.0.0.1).
+            exec:
+              command:
+                - python
+                - -S
+                - /app/quadringent_healthcheck.py
+                - {{ int $v2.port | quote }}
+                - /v2/healthz
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            # Écoute en loopback : sonde exécutée dans le Pod (le kubelet
+            # sonderait l'IP du Pod, jamais 127.0.0.1).
+            exec:
+              command:
+                - python
+                - -S
+                - /app/quadringent_healthcheck.py
+                - {{ int $v2.port | quote }}
+                - /v2/healthz
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 6
+          resources:
+            {{- toYaml $v2.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            capabilities:
+              drop: ["ALL"]
+        {{- end }}
+      {{- if or $launch .Values.controlPlane.telemetry.enabled }}
+      volumes:
+        {{- if $launch }}
+        {{- include "quadringent.caVolume" . | nindent 8 }}
+        - name: launch-config
+          configMap:
+            name: {{ include "quadringent.fullname" . }}-control-plane-launch
+        - name: fleet-state
+          {{- if $fleetStatePersistent }}
+          persistentVolumeClaim:
+            claimName: {{ include "quadringent.fullname" . }}-control-plane-fleet-state
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- end }}
+        {{- if .Values.controlPlane.telemetry.enabled }}
+        - name: telemetry-state
+          emptyDir: {}
+        {{- end }}
+      {{- end }}
+{{- if $launch }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "quadringent.fullname" . }}-control-plane-launch
+  annotations:
+    quadringent.io/environment: {{ .Values.deployment.environment }}
+    quadringent.io/production-promotion: forbidden
+  labels:
+    {{- include "quadringent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: control-plane
+data:
+  fleet-catalog.json: |-
+{{ .Values.controlPlane.launch.fleetCatalog | indent 4 }}
+  job-template.json: |-
+{{ .Values.controlPlane.launch.jobTemplate | indent 4 }}
+  fleet-sidecar.json: |-
+{{ .Values.controlPlane.launch.fleetSidecar | indent 4 }}
+{{- end }}
+{{- if $launch }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "quadringent.fullname" . }}-control-plane-jobs
+  annotations:
+    quadringent.io/environment: {{ .Values.deployment.environment }}
+    quadringent.io/production-promotion: forbidden
+  labels:
+    {{- include "quadringent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: control-plane
+rules:
+  # create/get pour lancer et relire ; patch uniquement pour suspendre ou
+  # reprendre (`spec.suspend`) un Job déjà créé par cette identité — jamais
+  # delete ni deletecollection (nettoyage laissé à `ttlSecondsAfterFinished`).
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "quadringent.fullname" . }}-control-plane-jobs
+  annotations:
+    quadringent.io/environment: {{ .Values.deployment.environment }}
+    quadringent.io/production-promotion: forbidden
+  labels:
+    {{- include "quadringent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: control-plane
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "quadringent.fullname" . }}-control-plane-jobs
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.controlPlane.serviceAccount.name }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
+{{- if $v2.enabled }}
+{{/*
+Role/RoleBinding dédiés à la sonde de source et à la découverte de tables
+v2 (chantier « prod-wiring ») — jamais fusionnés avec le Role de lancement
+de Jobs de la flotte v1 (``$launch`` ci-dessus) : deux consommateurs, deux
+Roles, chacun au strict nécessaire (v1 ne supprime jamais de Job lui-même ;
+v2 doit nettoyer systématiquement ses Jobs/Secrets éphémères).
+*/}}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "quadringent.fullname" . }}-control-plane-v2-diagnostics
+  annotations:
+    quadringent.io/environment: {{ .Values.deployment.environment }}
+    quadringent.io/production-promotion: forbidden
+  labels:
+    {{- include "quadringent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: control-plane
+rules:
+  # Jobs de diagnostic (sonde de source, découverte de tables) : create/get
+  # pour lancer et relire, delete pour le nettoyage systématique — voir
+  # ``executor/diagnostic_jobs.py::run_diagnostic_job``.
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "delete"]
+  # Secrets éphémères (mot de passe IBM i) provisionnés pour chaque Job de
+  # diagnostic puis supprimés juste après lecture du résultat — jamais de
+  # `list`/`watch`, jamais un droit sur un Secret que cette identité n'a pas
+  # elle-même créé.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "get", "delete"]
+  # Lecture seule des pods du Job de diagnostic (sélection par le label
+  # `job-name` posé automatiquement par Kubernetes) et de leurs journaux —
+  # c'est le mécanisme de retour du résultat, voir
+  # ``executor/diagnostic_jobs.py``.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "quadringent.fullname" . }}-control-plane-v2-diagnostics
+  annotations:
+    quadringent.io/environment: {{ .Values.deployment.environment }}
+    quadringent.io/production-promotion: forbidden
+  labels:
+    {{- include "quadringent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: control-plane
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "quadringent.fullname" . }}-control-plane-v2-diagnostics
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.controlPlane.serviceAccount.name }}
+    namespace: {{ .Release.Namespace }}
+---
+{{/*
+Role/RoleBinding dédiés à l'exécuteur de pipeline v2 (chantier
+« pipeline-exec » — démarrer/mettre en pause/reprendre un pipeline) :
+Deployments (lecteur de journal, chargeur de destination), Jobs (copie
+initiale, rejeu) et Secrets *durables* (identifiants IBM i/Snowflake
+maintenus à jour par ``executor/secrets_provisioner.py``, jamais nettoyés
+après coup — contrairement aux Secrets éphémères des Jobs de diagnostic
+ci-dessus). Jamais fusionné avec le Role de diagnostic : deux surfaces, deux
+Roles, chacun au strict nécessaire aux verbes que ``executor/kubernetes.py``
+et ``executor/secrets_provisioner.py`` appellent réellement.
+*/}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "quadringent.fullname" . }}-control-plane-v2-executor
+  annotations:
+    quadringent.io/environment: {{ .Values.deployment.environment }}
+    quadringent.io/production-promotion: forbidden
+  labels:
+    {{- include "quadringent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: control-plane
+rules:
+  # Deployments du lecteur de journal et du chargeur de destination :
+  # create/get pour la réconciliation, update pour un remplacement complet
+  # (``PUT`` — ``KubernetesDeploymentsClient.replace_deployment``, jamais un
+  # patch partiel), delete quand plus aucune table n'est live/copying sur ce
+  # journal/cette destination.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["create", "get", "update", "delete"]
+  # Jobs de copie initiale et de rejeu : create/get, jamais de mise à jour
+  # (un Job est immuable, cf. ``reconcile.py::reconcile_jobs``) ; delete
+  # n'est jamais appelé par l'exécuteur lui-même (nettoyage laissé à
+  # ``ttlSecondsAfterFinished``) mais reste accordé pour l'alignement avec
+  # les autres Roles Jobs de cette chart.
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "delete"]
+  # Secrets durables (identifiants IBM i/Snowflake référencés par
+  # ``envFrom.secretRef``) : create au premier provisionnement, patch pour
+  # la mise à jour idempotente (``upsert_secret`` — 409 puis PATCH merge),
+  # get uniquement pour diagnostiquer un échec de provisionnement ; jamais
+  # `list`/`watch`.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "quadringent.fullname" . }}-control-plane-v2-executor
+  annotations:
+    quadringent.io/environment: {{ .Values.deployment.environment }}
+    quadringent.io/production-promotion: forbidden
+  labels:
+    {{- include "quadringent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: control-plane
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "quadringent.fullname" . }}-control-plane-v2-executor
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.controlPlane.serviceAccount.name }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
+{{- if and $launch $fleetStatePersistent }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "quadringent.fullname" . }}-control-plane-fleet-state
+  annotations:
+    quadringent.io/environment: {{ .Values.deployment.environment }}
+    quadringent.io/production-promotion: forbidden
+  labels:
+    {{- include "quadringent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: control-plane
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- $storageClass := get $fleetPersistence "storageClassName" | default "" }}
+  {{- if eq $storageClass "-" }}
+  storageClassName: ""
+  {{- else if $storageClass }}
+  storageClassName: {{ $storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ get $fleetPersistence "size" | default "256Mi" | quote }}
+{{- end }}
+{{- end }}

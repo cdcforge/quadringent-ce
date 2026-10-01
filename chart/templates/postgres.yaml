@@ -1,0 +1,301 @@
+{{- /*
+  Postgres embarqué pour l'état du control plane v2 — StatefulSet à une seule
+  réplique (pas de haute disponibilité dans cette première version, documenté
+  dans docs/product/install-default.md), volume persistant, Service, Secret
+  d'identifiants conservé entre upgrades, NetworkPolicy restreignant l'accès
+  au control plane, sauvegarde logique optionnelle.
+
+  postgres.enabled et externalDatabase (Postgres géré externe, mode expert)
+  sont mutuellement exclusifs — voir chart/values.yaml.
+*/ -}}
+{{- if .Values.postgres.enabled }}
+{{- if or .Values.externalDatabase.url .Values.externalDatabase.existingSecret }}
+{{- fail "postgres.enabled et externalDatabase sont mutuellement exclusifs : désactiver l'un ou l'autre" }}
+{{- end }}
+{{- if not (regexMatch "^sha256:[a-f0-9]{64}$" .Values.postgres.image.digest) }}
+{{- fail "postgres.image.digest doit être un digest sha256 immuable" }}
+{{- end }}
+{{- if not (regexMatch "^[a-z_][a-z0-9_]{0,62}$" (required "postgres.database est obligatoire" .Values.postgres.database)) }}
+{{- fail "postgres.database doit être un identifiant Postgres borné" }}
+{{- end }}
+{{- if not (regexMatch "^[a-z_][a-z0-9_]{0,62}$" (required "postgres.username est obligatoire" .Values.postgres.username)) }}
+{{- fail "postgres.username doit être un identifiant Postgres borné" }}
+{{- end }}
+{{- $name := include "quadringent.postgresServiceName" . }}
+{{- $secretName := include "quadringent.postgresSecretName" . }}
+{{- /* Génération une fois, conservée ensuite : `lookup` interroge le cluster
+  réel (toujours {} hors ligne — `helm template`/tests unitaires empruntent
+  donc systématiquement la branche « génère » ; seul un `helm install`/
+  `upgrade` réel exerce la branche « conserve »). */ -}}
+{{- $existingSecret := lookup "v1" "Secret" .Release.Namespace $secretName }}
+{{- $password := "" }}
+{{- if and $existingSecret $existingSecret.data (hasKey $existingSecret.data "POSTGRES_PASSWORD") }}
+{{- $password = index $existingSecret.data "POSTGRES_PASSWORD" }}
+{{- else }}
+{{- $password = randAlphaNum 32 | b64enc }}
+{{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $secretName }}
+  annotations:
+    # Jamais rotée par un upgrade : une régénération casserait toute session
+    # active et le DSN déjà distribué au conteneur control-plane v2.
+    helm.sh/resource-policy: keep
+    quadringent.io/environment: {{ .Values.deployment.environment }}
+    quadringent.io/production-promotion: forbidden
+  labels:
+    {{- include "quadringent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+type: Opaque
+data:
+  POSTGRES_PASSWORD: {{ $password }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "quadringent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  # Headless : identité réseau stable du seul pod du StatefulSet, sans
+  # répartition de charge inutile pour une réplique unique.
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: {{ include "quadringent.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: postgres
+  ports:
+    - name: postgres
+      port: {{ .Values.postgres.port }}
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "quadringent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "quadringent.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: postgres
+  template:
+    metadata:
+      labels:
+        {{- include "quadringent.labels" . | nindent 8 }}
+        app.kubernetes.io/component: postgres
+    spec:
+      {{- with .Values.image.pullSecret }}
+      imagePullSecrets:
+        - name: {{ . }}
+      {{- end }}
+      securityContext:
+        # L'image officielle postgres démarre en root puis bascule vers
+        # l'utilisateur postgres : avec runAsNonRoot, l'UID doit être fixé
+        # (70 en alpine, 999 en Debian — postgres.runAsUser).
+        runAsNonRoot: true
+        runAsUser: {{ int .Values.postgres.runAsUser }}
+        runAsGroup: {{ int .Values.postgres.runAsUser }}
+        fsGroup: {{ int .Values.postgres.runAsUser }}
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: {{ .Values.postgres.image.repository }}@{{ .Values.postgres.image.digest }}
+          imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+          ports:
+            - name: postgres
+              containerPort: {{ .Values.postgres.port }}
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.postgres.database | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.postgres.username | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            {{- toYaml .Values.postgres.resources | nindent 12 }}
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.postgres.username | quote }}, "-d", {{ .Values.postgres.database | quote }}]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.postgres.username | quote }}, "-d", {{ .Values.postgres.database | quote }}]
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "quadringent.labels" . | nindent 10 }}
+          app.kubernetes.io/component: postgres
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if .Values.postgres.storage.storageClassName }}
+        storageClassName: {{ .Values.postgres.storage.storageClassName }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.postgres.storage.size }}
+{{- if .Values.networkPolicy.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "quadringent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "quadringent.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    # Seul le control plane (v1 et v2, même Pod, même label de composant)
+    # peut se connecter — aucun autre pod du namespace, du cluster ou du
+    # lecteur IBM i n'a besoin d'accéder à Postgres.
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ include "quadringent.name" . }}
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: control-plane
+      ports:
+        - port: {{ .Values.postgres.port }}
+          protocol: TCP
+{{- end }}
+{{- if .Values.postgres.backup.enabled }}
+---
+{{- if not .Values.controlPlane.enabled }}
+{{- fail "postgres.backup.enabled exige controlPlane.enabled (image et identité de capture partagées)" }}
+{{- end }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $name }}-backup
+  labels:
+    {{- include "quadringent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres-backup
+spec:
+  schedule: {{ .Values.postgres.backup.schedule | quote }}
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 120
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 1800
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: postgres-backup
+        spec:
+          {{- with .Values.postgres.backup.serviceAccountName }}
+          serviceAccountName: {{ . }}
+          {{- end }}
+          automountServiceAccountToken: {{ ne .Values.postgres.backup.serviceAccountName "" }}
+          restartPolicy: Never
+          {{- with .Values.image.pullSecret }}
+          imagePullSecrets:
+            - name: {{ . }}
+          {{- end }}
+          securityContext:
+            runAsNonRoot: true
+            fsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          # pg_dump vit dans l'image postgres, absente de l'image
+          # control-plane (Python) : un initContainer dédié produit le
+          # fichier sur un volume partagé, le conteneur principal (image
+          # control-plane, qui a l'identité S3/GCS du site) le publie.
+          initContainers:
+            - name: pg-dump
+              image: {{ .Values.postgres.image.repository }}@{{ .Values.postgres.image.digest }}
+              imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+              command: ["pg_dump", "--format=custom", "--no-owner", "--no-privileges", "--file", "/backup/postgres.dump"]
+              env:
+                - name: PGHOST
+                  value: {{ $name | quote }}
+                - name: PGPORT
+                  value: {{ .Values.postgres.port | quote }}
+                - name: PGDATABASE
+                  value: {{ .Values.postgres.database | quote }}
+                - name: PGUSER
+                  value: {{ .Values.postgres.username | quote }}
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ $secretName }}
+                      key: POSTGRES_PASSWORD
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+              securityContext:
+                # Même image postgres que le StatefulSet : UID explicite exigé
+                # par runAsNonRoot ; le groupe du pod (fsGroup) rend /backup inscriptible.
+                runAsUser: {{ int .Values.postgres.runAsUser }}
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: false
+                capabilities:
+                  drop: ["ALL"]
+          containers:
+            - name: publish
+              # Image control-plane (jamais l'image lecteur) : c'est elle qui
+              # embarque scripts/quadringent_postgres_backup.py.
+              image: {{ .Values.controlPlane.image.repository }}@{{ .Values.controlPlane.image.digest }}
+              imagePullPolicy: {{ .Values.controlPlane.image.pullPolicy }}
+              command: ["python", "/app/quadringent_postgres_backup.py", "--dump-file", "/backup/postgres.dump"]
+              envFrom:
+                - configMapRef:
+                    name: {{ include "quadringent.fullname" . }}-tuning
+              env:
+                - name: QUADRINGENT_PG_BACKUP_PREFIX
+                  value: {{ .Values.postgres.backup.destinationPrefix | quote }}
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+                  readOnly: true
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+          volumes:
+            - name: backup
+              emptyDir:
+                sizeLimit: 4Gi
+{{- end }}
+{{- end }}

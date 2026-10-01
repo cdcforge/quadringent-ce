@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Quadringent — IBM i vers Snowflake, avec des preuves</title>
+<meta name="description" content="Capture de changements IBM i vers Snowflake. Un cockpit pour suivre la lecture, le chargement et les preuves de livraison.">
+<link rel="stylesheet" href="style.css"></head>
+<body><a class="skip" href="#contenu">Aller au contenu</a>
+<header class="nav"><a class="brand" href="#">▥ <span>Quadringent</span></a><nav aria-label="Navigation"><a href="#perimetre">Le produit</a><a data-repo-path="README.md" href="../README.md">Documentation</a><span class="private">Préversion DEV · 0.2.3</span></nav></header>
+<main id="contenu"><section class="hero"><div class="eyebrow">CAPTURE DE CHANGEMENTS · IBM i → SNOWFLAKE</div>
+<h1>La copie avance.<br>La preuve aussi.</h1>
+<p class="intro">Du journal IBM i à la table Snowflake, voyez ce qui a été lu, déposé et réellement livré. Quand une mesure manque, Quadringent le dit.</p>
+<div class="actions"><a class="primary" data-repo-path="docs/product/install-client.md" href="../docs/product/install-client.md">Lire le guide d’installation <span aria-hidden="true">↗</span></a><a data-repo-path="README.md" href="../README.md">Essayer le cockpit local →</a></div>
+<p class="audience">Pour les équipes data qui exploitent leur propre infrastructure IBM i, AWS et Snowflake.</p>
+</section>
+<figure class="preview"><div class="preview-head"><span>LE COCKPIT OPÉRATEUR</span><span class="simulation">Simulation · données synthétiques</span></div><img src="assets/cockpit.png" alt="Cockpit Quadringent présentant une liaison simulée et ses preuves de livraison" width="1440" height="1000"><figcaption>Vue desktop. Cette capture illustre l’interface ; elle ne représente aucune mesure de site.</figcaption></figure>
+<section class="scope" id="perimetre"><div class="section-title"><span class="eyebrow">UN TRAJET, PLUSIEURS PREUVES</span><h2>De la visibilité pour décider.</h2></div><div class="cards">
+<article><span class="number">01 / SUIVRE</span><h3>Lire n’est pas livrer.</h3><p>Lecture du journal, brut S3, chargement et rapprochement restent des étapes distinctes. Un lecteur actif ne suffit pas à déclarer la destination à jour.</p></article>
+<article><span class="number">02 / AGIR</span><h3>Des reprises bornées.</h3><p>Une action apparaît quand le service peut l’exécuter. Confirmation, checkpoint et reçu permettent de distinguer la demande de son effet observé.</p></article>
+<article><span class="number">03 / MESURER</span><h3>Le coût a une source.</h3><p>Crédits Snowflake et prix déclaré. Volume S3 et tarif public relevé. Allocation du cluster via OpenCost. Chaque montant garde son périmètre et sa date.</p></article>
+</div></section>
+<section class="limits"><h2>Un périmètre explicite.</h2><div><p>Environnements non productifs. Desktop. Installation sur votre infrastructure. La déclaration d’une liaison ne la met pas automatiquement en service.</p><p>Les coûts demandent des sources configurées ; les calculs ne sont pas une facture. Authentification applicative désactivée par défaut sur le loopback : consultez le guide de sécurité avant toute exposition.</p><a data-repo-path="SECURITY.md" href="../SECURITY.md">Lire les limites de sécurité →</a></div></section>
+</main><footer><span>Quadringent · Open source sous Apache-2.0</span><span>Dépôt privé jusqu’à validation commune · <a data-repo-path="LICENSE" href="../LICENSE">Licence</a></span></footer>
+</body></html>

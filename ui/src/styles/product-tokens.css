@@ -1,0 +1,192 @@
+:root {
+  color-scheme: light;
+
+  --surface-canvas: #f6f6f4;
+  --surface-work: #f6f6f4;
+  --surface-panel: #ffffff;
+  --surface-quiet: #f0f1ee;
+  --surface-subtle: #e9ebe7;
+  --surface-rail: #151615;
+  --surface-rail-raised: #222421;
+  --surface-rail-hover: #2b2e2a;
+
+  --text-strong: #151615;
+  --text-main: #353835;
+  --text-muted: #5f6460;
+  --text-subtle: #696e6a;
+  --text-rail: #f2f0e8;
+  --text-rail-muted: #9da198;
+
+  --line-subtle: #e5e7e4;
+  --line-strong: #cfd2ce;
+  --line-rail: rgba(255, 255, 255, 0.11);
+
+  --signal-live: #2563eb;
+  --signal-live-soft: #eef4ff;
+  /* Vert « prouvé / mesuré » — la seule couleur qui affirme une mesure. */
+  --signal-ok: #1a7f37;
+  --signal-ok-soft: #eaf5ee;
+  --signal-attention: #9a5a00;
+  --signal-attention-soft: #fff8eb;
+  --signal-incident: #b42318;
+  --signal-incident-soft: #fff2f0;
+  --signal-proven: #2563eb;
+  --signal-proven-soft: #eef4ff;
+  --signal-range: #d6a263;
+
+  --radius-panel: 6px;
+  --radius-pill: 999px;
+  --shadow-panel: 0 1px 2px rgba(21, 22, 21, 0.04), 0 18px 48px rgba(21, 22, 21, 0.045);
+  --focus-ring: #2563eb;
+
+  --font-sans: "IBM Plex Sans Variable", "IBM Plex Sans", Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, ui-monospace, monospace;
+  /* Socle IBM Plex validé par le product owner (2026-09-23) : IBM Plex Sans pour
+     tout le texte d'interface (écrans produit + composants « fondation »),
+     IBM Plex Mono pour les valeurs, identifiants, séquences et noms de
+     table/bibliothèque. --font-plex-sans/--font-plex-mono restent des alias
+     pour compatibilité avec le code existant qui les référence encore. */
+  --font-plex-sans: var(--font-sans);
+  --font-plex-mono: var(--font-mono);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+
+  --t-micro: 11px;
+  --t-small: 13px;
+  --t-body: 15px;
+  --t-lead: 17px;
+  --t-num: 28px;
+  --t-hero: 72px;
+
+  --w-regular: 400;
+  --w-medium: 500;
+  --w-strong: 600;
+
+  --r-sm: 4px;
+  --r-md: 12px;
+
+  --paper: var(--surface-canvas);
+  --paper-sunk: var(--surface-panel);
+  --ink-1: var(--text-strong);
+  --ink-2: var(--text-main);
+  --ink-3: var(--text-muted);
+  --ink-4: var(--text-subtle);
+  --rule: var(--line-subtle);
+  --rule-firm: var(--line-strong);
+  --accent: var(--signal-live);
+  --accent-wash: var(--signal-live-soft);
+  --alert: var(--signal-incident);
+  --alert-wash: var(--signal-incident-soft);
+  --sans: var(--font-sans);
+  --mono: var(--font-mono);
+
+  /* Bandes « papier listing » (BandedTable) : vert très pâle en alternance,
+     façon papier continu d'imprimante. Zéro impact hors des composants qui
+     lisent ces jetons explicitement. */
+  --band-odd: transparent;
+  --band-even: #eef6ee;
+  --band-hover: #e3f0e4;
+  --band-focus: #d8ecdc;
+}
+
+/* Thème sombre : activé soit par préférence système (hors override explicite
+   clair), soit par un attribut data-theme="dark" posé par la page (utilisé par
+   la page de référence des fondations pour la revue produit owner). Les jetons
+   sémantiques (--paper, --ink-*, --signal-*…) sont redéfinis ici ; le reste de
+   l'UI qui les consomme déjà n'a rien à changer pour rester correct en sombre. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --surface-canvas: #14161a;
+    --surface-work: #14161a;
+    --surface-panel: #1b1e22;
+    --surface-quiet: #20242a;
+    --surface-subtle: #262b31;
+    --surface-rail: #0d0f11;
+    --surface-rail-raised: #17191c;
+    --surface-rail-hover: #202327;
+
+    --text-strong: #f2f2ef;
+    --text-main: #d3d5d0;
+    --text-muted: #a2a7a1;
+    --text-subtle: #868c86;
+    --text-rail: #f2f0e8;
+    --text-rail-muted: #8b9088;
+
+    --line-subtle: #2c3036;
+    --line-strong: #3c4148;
+    --line-rail: rgba(255, 255, 255, 0.09);
+
+    --signal-live: #6ea8ff;
+    --signal-live-soft: #16233f;
+    --signal-ok: #4bbf74;
+    --signal-ok-soft: #12291a;
+    --signal-attention: #e3a23f;
+    --signal-attention-soft: #332508;
+    --signal-incident: #ef6a5c;
+    --signal-incident-soft: #3a1512;
+    --signal-proven: #6ea8ff;
+    --signal-proven-soft: #16233f;
+    --signal-range: #d6a263;
+
+    --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.3), 0 18px 48px rgba(0, 0, 0, 0.35);
+    --focus-ring: #6ea8ff;
+
+    --band-odd: transparent;
+    --band-even: #172019;
+    --band-hover: #1c2820;
+    --band-focus: #213026;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --surface-canvas: #14161a;
+  --surface-work: #14161a;
+  --surface-panel: #1b1e22;
+  --surface-quiet: #20242a;
+  --surface-subtle: #262b31;
+  --surface-rail: #0d0f11;
+  --surface-rail-raised: #17191c;
+  --surface-rail-hover: #202327;
+
+  --text-strong: #f2f2ef;
+  --text-main: #d3d5d0;
+  --text-muted: #a2a7a1;
+  --text-subtle: #868c86;
+  --text-rail: #f2f0e8;
+  --text-rail-muted: #8b9088;
+
+  --line-subtle: #2c3036;
+  --line-strong: #3c4148;
+  --line-rail: rgba(255, 255, 255, 0.09);
+
+  --signal-live: #6ea8ff;
+  --signal-live-soft: #16233f;
+  --signal-ok: #4bbf74;
+  --signal-ok-soft: #12291a;
+  --signal-attention: #e3a23f;
+  --signal-attention-soft: #332508;
+  --signal-incident: #ef6a5c;
+  --signal-incident-soft: #3a1512;
+  --signal-proven: #6ea8ff;
+  --signal-proven-soft: #16233f;
+  --signal-range: #d6a263;
+
+  --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.3), 0 18px 48px rgba(0, 0, 0, 0.35);
+  --focus-ring: #6ea8ff;
+
+  --band-odd: transparent;
+  --band-even: #172019;
+  --band-hover: #1c2820;
+  --band-focus: #213026;
+}

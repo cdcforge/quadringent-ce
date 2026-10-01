@@ -1,0 +1,82 @@
+# DEV-only, applied directly to example-corp-int-green on 2026-09-08 with user authorization.
+# Do not include in shared promotion pipelines. No new routes, SG rules or IAM grants.
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: cdcforge-dev-lan
+  annotations:
+    cdcforge.io/environment: dev
+    cdcforge.io/production-promotion: forbidden
+spec:
+  amiFamily: AL2023
+  amiSelectorTerms:
+    - id: ami-08f5e10888e161598
+  role: example-platform-int-eks-green-karpenter-node
+  subnetSelectorTerms:
+    - id: subnet-05e1f526c48e7b69e
+  securityGroupSelectorTerms:
+    - id: sg-0ff2521e55569f453
+  metadataOptions:
+    httpEndpoint: enabled
+    httpProtocolIPv6: disabled
+    httpPutResponseHopLimit: 1
+    httpTokens: required
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      ebs:
+        volumeSize: 30Gi
+        volumeType: gp3
+        encrypted: true
+        deleteOnTermination: true
+  tags:
+    Project: cdcforge
+    Environment: dev
+    Name: cdcforge-dev-canary
+---
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: cdcforge-dev
+  annotations:
+    cdcforge.io/environment: dev
+    cdcforge.io/production-promotion: forbidden
+spec:
+  limits:
+    cpu: '2'
+    memory: 8Gi
+  disruption:
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: 300s
+    budgets:
+      - nodes: '1'
+  template:
+    metadata:
+      labels:
+        workload: cdcforge-dev
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: cdcforge-dev-lan
+      expireAfter: 2h
+      terminationGracePeriod: 5m
+      taints:
+        - key: dedicated
+          value: cdcforge-dev
+          effect: NoSchedule
+      requirements:
+        - key: kubernetes.io/os
+          operator: In
+          values: [linux]
+        - key: kubernetes.io/arch
+          operator: In
+          values: [amd64]
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values: [m6i.large]
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: [on-demand]
+        - key: topology.kubernetes.io/zone
+          operator: In
+          values: [eu-west-3b]

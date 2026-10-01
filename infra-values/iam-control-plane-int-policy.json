@@ -1,0 +1,29 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadLatestEvntProofOnly",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::example-corp-000000000000-int-example-corp-raw/as400/sales/sale/proofs/cdcforge-autonomous-latest.json"
+    },
+    {
+      "Sid": "ReadWindowDestinationProofOnly",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::example-corp-000000000000-int-example-corp-raw/as400/sales/sale/runs/*/windows/*/destination.json"
+    },
+    {
+      "Sid": "ReadLatestFleetConsoleOnly",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::example-corp-000000000000-int-example-corp-raw/as400/sales/fleet/console-snapshot.json"
+    },
+    {
+      "Sid": "ReadLatestFleetProofOnly",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::example-corp-000000000000-int-example-corp-raw/as400/sales/fleet/console-proof.json"
+    }
+  ]
+}

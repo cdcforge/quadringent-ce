@@ -1,0 +1,34 @@
+title = "Quadringent secret scanning"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "allow_empty is a boolean validation flag on declared table lists, not a credential"
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = [
+  '''(?:^|/)(?:src/)?quadringent/site_config\.py$''',
+]
+regexTarget = "line"
+regexes = [
+  '''allow_empty\s*=\s*(?:True|False)''',
+]
+
+[[allowlists]]
+description = "AS400_EVIDENCE_KEY is the name of an environment variable, not its value"
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = [
+  '''(?:^|/)(?:src/)?quadringent_control_plane/v2/executor/manifests\.py$''',
+]
+regexTarget = "line"
+regexes = [
+  '''ENV_EVIDENCE_KEY\s*=\s*"AS400_EVIDENCE_KEY"''',
+]
+
+[[rules]]
+id = "quadringent-license"
+description = "Licence commerciale Quadringent en clair"
+regex = '''quadringent1[.][A-Za-z0-9_-]{40,}[.][A-Za-z0-9_-]{60,}'''
+keywords = ["quadringent1"]

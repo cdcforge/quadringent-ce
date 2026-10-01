@@ -1,0 +1,98 @@
+/* Journal — une timeline datée, groupée par jour. */
+
+.history-attention {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--surface-panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  margin-bottom: var(--space-7);
+}
+
+.history-attention__item {
+  display: grid;
+  grid-template-columns: auto minmax(120px, auto) auto 1fr;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6);
+  color: inherit;
+  border-top: 1px solid var(--rule);
+}
+
+.history-attention__item:first-child { border-top: 0; }
+.history-attention__item:hover { background: var(--surface-quiet); text-decoration: none; }
+
+.history-attention__name {
+  font-weight: var(--w-medium);
+  color: var(--ink-1);
+}
+
+.history-attention__state {
+  font-size: var(--t-small);
+  color: var(--signal-incident);
+}
+
+.history-attention__headline {
+  font-size: var(--t-small);
+  color: var(--ink-3);
+}
+
+/* ---------------------------------------------------------------- */
+
+.history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-7);
+}
+
+.history__date {
+  font-size: var(--t-small);
+  font-weight: var(--w-medium);
+  color: var(--ink-3);
+  margin-bottom: var(--space-4);
+  text-transform: capitalize;
+}
+
+.history__list {
+  background: var(--surface-panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.history__line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid var(--rule);
+}
+
+.history__line:first-child { border-top: 0; }
+
+.history__time {
+  flex: none;
+  width: 4.5ch;
+  font-size: var(--t-small);
+  color: var(--ink-4);
+}
+
+.history__body { flex: 1; min-width: 0; }
+
+.history__label {
+  font-size: var(--t-body);
+  color: var(--ink-1);
+  line-height: 1.5;
+}
+
+.history__line--attention .history__label { color: var(--signal-incident); }
+
+.history__detail {
+  margin-top: 2px;
+  font-size: var(--t-small);
+  color: var(--ink-3);
+  line-height: 1.6;
+  max-width: 78ch;
+}

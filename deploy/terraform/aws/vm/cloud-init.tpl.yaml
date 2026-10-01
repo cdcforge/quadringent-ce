@@ -1,0 +1,10 @@
+#cloud-config
+# Bootstrap k3s for the Quadringent VM target. Keep this MIME part ASCII:
+# cloudinit_config emits Content-Transfer-Encoding: 7bit, and cloud-init on
+# Amazon Linux rejects non-ASCII characters in that part.
+# The CLI installs the chart using the kubeconfig fetched through SSM.
+package_update: true
+runcmd:
+  - curl -sfL https://get.k3s.io | INSTALL_K3S_CHANNEL=${k3s_channel} sh -s - server --write-kubeconfig-mode=600 --disable=traefik
+  - mkdir -p /etc/quadringent
+  - echo "site=${site_name}" > /etc/quadringent/site.env

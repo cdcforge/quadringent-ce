@@ -1,0 +1,94 @@
+/* Consommation — un tableau de grandeurs, et une limite assumée. */
+
+.consumption {
+  background: var(--surface-panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  padding: var(--space-6) var(--space-7);
+}
+
+.consumption__title {
+  font-size: var(--t-lead);
+  font-weight: var(--w-medium);
+  color: var(--ink-1);
+}
+
+.consumption__lines {
+  margin-top: var(--space-6);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-6);
+}
+
+.consumption__line dt {
+  font-size: var(--t-small);
+  color: var(--ink-4);
+}
+
+.consumption__line dd {
+  margin: 3px 0 0;
+  font-size: 22px;
+  font-weight: var(--w-medium);
+  color: var(--ink-1);
+  letter-spacing: -0.01em;
+}
+
+.consumption__unit {
+  font-size: var(--t-small);
+  font-weight: var(--w-regular);
+  color: var(--ink-4);
+}
+
+.consumption__absent {
+  font-size: var(--t-body) !important;
+  font-weight: var(--w-regular) !important;
+  color: var(--ink-4) !important;
+}
+
+.consumption__none {
+  margin-top: var(--space-5);
+  color: var(--ink-3);
+  line-height: 1.6;
+  max-width: 62ch;
+}
+
+.consumption__limits {
+  margin-top: var(--space-6);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--rule);
+}
+
+.consumption__infrastructure {
+  margin-top: var(--space-7);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--rule);
+}
+
+.consumption__line .consumption__detail {
+  margin-top: var(--space-3);
+  font-size: var(--t-small);
+  font-weight: var(--w-regular);
+  color: var(--ink-3);
+  line-height: 1.6;
+  letter-spacing: normal;
+}
+
+.consumption__limits-title {
+  font-size: var(--t-small);
+  font-weight: var(--w-medium);
+  color: var(--ink-3);
+  margin-bottom: var(--space-2);
+}
+
+.consumption__limits ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.consumption__limits li {
+  font-size: var(--t-small);
+  color: var(--ink-4);
+  line-height: 1.6;
+  max-width: 72ch;
+}

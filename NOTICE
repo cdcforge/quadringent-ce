@@ -1,0 +1,15 @@
+Quadringent
+Copyright 2026 Clément Muffat-Joly et les contributeurs de Quadringent.
+
+Le code original du moteur, de l’API et du cockpit local est distribué sous
+Apache License, Version 2.0. Voir LICENSE.
+
+Les composants tiers gardent leurs licences et leurs avis. En particulier :
+- Debezium : Copyright Debezium Authors ; Apache License, Version 2.0.
+- JTOpen et les portions IBM du module jt400-override-ccsid : Copyright
+  International Business Machines Corporation and others ; IBM Public License 1.0.
+- SLF4J : Copyright QOS.ch et ses contributeurs ; licence MIT.
+
+Voir THIRD_PARTY_NOTICES.md et licenses/ pour les textes, sources et conditions
+de redistribution. Cet avis ne modifie aucune licence et ne concède aucun droit
+sur les marques des auteurs ou des composants tiers.

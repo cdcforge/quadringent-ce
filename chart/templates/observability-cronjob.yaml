@@ -1,0 +1,186 @@
+{{- if .Values.observability.enabled }}
+{{- $site := .Values.site }}
+{{ include "quadringent.siteGuards" . }}
+{{- if or (ne .Values.storage.rawBucket $site.rawBucket) (ne (trimSuffix "/" .Values.storage.rawPrefix) (printf "%s/%s" $site.rawPrefixRoot (lower $site.proofTable))) }}
+{{- fail "observability exige le stockage de preuve du site déclaré" }}
+{{- end }}
+{{- if not (regexMatch "^sha256:[a-f0-9]{64}$" .Values.observability.imageDigest) }}
+{{- fail "observability.imageDigest exige un SHA256 immuable" }}
+{{- end }}
+{{- if not (has .Values.observability.schedule (list "*/15 * * * *" "0 * * * *")) }}
+{{- fail "observability.schedule exige une cadence de 15 minutes ou une heure" }}
+{{- end }}
+{{- if not (kindIs "bool" .Values.observability.suspend) }}
+{{- fail "observability.suspend exige un booléen" }}
+{{- end }}
+{{- $alerts := .Values.observability.alerts | default dict }}
+{{- if not (kindIs "map" $alerts) }}
+{{- fail "observability.alerts exige un objet de destinations" }}
+{{- end }}
+{{- range $name := list "webhookUrl" "snsTopic" }}
+{{- $destination := index $alerts $name }}
+{{- if and (ne $destination nil) (not (kindIs "string" $destination)) }}
+{{- fail (printf "observability.alerts.%s exige une chaîne" $name) }}
+{{- end }}
+{{- end }}
+{{- $policy := mustFromJson (required "observability.policyJson est obligatoire" .Values.observability.policyJson) }}
+{{- if or (not (kindIs "map" $policy)) (ne (len $policy) 10) }}
+{{- fail "observability.policyJson exige dix seuils" }}
+{{- end }}
+{{- range $key := list "capture_freshness_seconds" "s3_freshness_seconds" "destination_freshness_seconds" "checkpoint_lag_sequences" "delivery_latency_p95_seconds" "delivery_latency_p99_seconds" "s3_requests_24h" "snowpipe_pending_files" "snowflake_credits_24h" "observability_freshness_seconds" }}
+{{- $value := index $policy $key }}
+{{- if not (kindIs "float64" $value) }}
+{{- fail "observability.policyJson exige dix nombres positifs ou nuls" }}
+{{- end }}
+{{- if lt $value 0.0 }}
+{{- fail "observability.policyJson exige dix nombres positifs ou nuls" }}
+{{- end }}
+{{- end }}
+{{- $name := printf "%s-observe" (include "quadringent.fullname" . | trunc 43 | trimSuffix "-") }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "quadringent.labels" . | nindent 4 }}
+data:
+  policy.json: {{ $policy | toJson | quote }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "quadringent.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.observability.schedule | quote }}
+  timeZone: Etc/UTC
+  suspend: {{ .Values.observability.suspend }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 120
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 600
+      backoffLimit: 0
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: observability
+        spec:
+          serviceAccountName: {{ required "verifierServiceAccountName" .Values.verifierServiceAccountName }}
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          nodeSelector:
+            kubernetes.io/arch: amd64
+          {{- with .Values.image.pullSecret }}
+          imagePullSecrets:
+            - name: {{ . }}
+          {{- end }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: observer
+              image: {{ printf "%s@%s" .Values.image.repository .Values.observability.imageDigest | quote }}
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  python /app/scripts/quadringent_observability_refresh.py \
+                    --policy /etc/quadringent-slo/policy.json \
+                    --out /work/observation.json \
+                    --aws-default-credentials \
+                    --snowflake-oidc-token-file /var/run/secrets/snowflake/token \
+                    --publish-confirm {{ printf "REFRESH_%s_OBSERVABILITY_%s" $site.destinationSchema (upper .Values.deployment.environment) | quote }}
+                  # Le rapport SLO est le bloc slo_report de la preuve combinée :
+                  # une observation sans rapport refuse de continuer.
+                  python -c 'import json, sys
+                  document = json.load(open("/work/observation.json"))
+                  report = document.get("observability", {}).get("slo_report")
+                  if not isinstance(report, dict):
+                      sys.exit("observation without an SLO report")
+                  open("/work/slo-report.json", "w").write(json.dumps(report))'
+                  if [ -n "${QUADRINGENT_ALERT_WEBHOOK_URL:-}${QUADRINGENT_ALERT_SNS_TOPIC:-}" ]; then
+                    python /app/scripts/quadringent_slo_alerts.py \
+                      --report /work/slo-report.json \
+                      --state /work/slo-alert-state.json \
+                      --observability-snapshot /work/observation.json
+                  else
+                    # Sans destination déclarée, la réconciliation reste
+                    # silencieuse : le CronJob n'échoue jamais sur l'état
+                    # d'alerte, et le code de sortie ne propage rien.
+                    python /app/scripts/quadringent_slo_alerts.py \
+                      --report /work/slo-report.json \
+                      --state /work/slo-alert-state.json \
+                      --observability-snapshot /work/observation.json || true
+                  fi
+              envFrom:
+                - configMapRef:
+                    name: {{ include "quadringent.fullname" . }}-site
+              env:
+                - name: AWS_EC2_METADATA_DISABLED
+                  value: "true"
+                - name: AWS_DEFAULT_REGION
+                  value: {{ .Values.aws.region | quote }}
+                - name: AWS_STS_REGIONAL_ENDPOINTS
+                  value: regional
+                {{- with $alerts.webhookUrl }}
+                - name: QUADRINGENT_ALERT_WEBHOOK_URL
+                  value: {{ . | quote }}
+                {{- end }}
+                {{- with $alerts.snsTopic }}
+                - name: QUADRINGENT_ALERT_SNS_TOPIC
+                  value: {{ . | quote }}
+                {{- end }}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 192Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+              volumeMounts:
+                - name: policy
+                  mountPath: /etc/quadringent-slo
+                  readOnly: true
+                - name: snowflake-identity
+                  mountPath: /var/run/secrets/snowflake
+                  readOnly: true
+                - name: work
+                  mountPath: /work
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: policy
+              configMap:
+                name: {{ $name }}
+                defaultMode: 0444
+            - name: snowflake-identity
+              projected:
+                defaultMode: 0440
+                sources:
+                  - serviceAccountToken:
+                      audience: snowflakecomputing.com
+                      expirationSeconds: 600
+                      path: token
+            - name: work
+              emptyDir:
+                sizeLimit: 16Mi
+            - name: tmp
+              emptyDir:
+                sizeLimit: 16Mi
+{{- end }}

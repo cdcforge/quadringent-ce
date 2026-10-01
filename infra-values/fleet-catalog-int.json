@@ -1,0 +1,327 @@
+{
+  "format_version": "quadringent-fleet-catalog-v1",
+  "observed_at": "2000-01-01T00:00:00Z",
+  "environment": "DEV",
+  "source_schema": "SALES",
+  "journals": [
+    {
+      "library": "DEMOLIB",
+      "name": "DEMOJRN",
+      "continuity": "uncertain",
+      "receivers": [
+        {
+          "library": "DEMOLIB",
+          "name": "DEMORECV",
+          "status": "ATTACHED",
+          "first_sequence": "1",
+          "last_sequence": "1",
+          "attach_timestamp": "2000-01-01T00:00:00Z",
+          "detach_timestamp": null,
+          "previous_library": null,
+          "previous_name": null
+        }
+      ]
+    }
+  ],
+  "tables": [
+    {
+      "name": "ADDRS1",
+      "row_count": 0,
+      "data_size": 0,
+      "member_count": 1,
+      "journal_library": "DEMOLIB",
+      "journal_name": "DEMOJRN",
+      "journal_images": "*AFTER",
+      "columns": [
+        {
+          "name": "ID",
+          "type": "INTEGER",
+          "length": 4,
+          "numeric_precision": 10,
+          "numeric_scale": 0,
+          "ccsid": null,
+          "nullable": false,
+          "ordinal": 1
+        }
+      ],
+      "constraints": [],
+      "indexes": []
+    },
+    {
+      "name": "CAL001",
+      "row_count": 0,
+      "data_size": 0,
+      "member_count": 1,
+      "journal_library": "DEMOLIB",
+      "journal_name": "DEMOJRN",
+      "journal_images": "*AFTER",
+      "columns": [
+        {
+          "name": "ID",
+          "type": "INTEGER",
+          "length": 4,
+          "numeric_precision": 10,
+          "numeric_scale": 0,
+          "ccsid": null,
+          "nullable": false,
+          "ordinal": 1
+        }
+      ],
+      "constraints": [],
+      "indexes": []
+    },
+    {
+      "name": "COST1",
+      "row_count": 0,
+      "data_size": 0,
+      "member_count": 1,
+      "journal_library": "DEMOLIB",
+      "journal_name": "DEMOJRN",
+      "journal_images": "*AFTER",
+      "columns": [
+        {
+          "name": "ID",
+          "type": "INTEGER",
+          "length": 4,
+          "numeric_precision": 10,
+          "numeric_scale": 0,
+          "ccsid": null,
+          "nullable": false,
+          "ordinal": 1
+        }
+      ],
+      "constraints": [],
+      "indexes": []
+    },
+    {
+      "name": "CUSTOM1",
+      "row_count": 0,
+      "data_size": 0,
+      "member_count": 1,
+      "journal_library": "DEMOLIB",
+      "journal_name": "DEMOJRN",
+      "journal_images": "*AFTER",
+      "columns": [
+        {
+          "name": "ID",
+          "type": "INTEGER",
+          "length": 4,
+          "numeric_precision": 10,
+          "numeric_scale": 0,
+          "ccsid": null,
+          "nullable": false,
+          "ordinal": 1
+        }
+      ],
+      "constraints": [],
+      "indexes": []
+    },
+    {
+      "name": "ORDER",
+      "row_count": 0,
+      "data_size": 0,
+      "member_count": 1,
+      "journal_library": "DEMOLIB",
+      "journal_name": "DEMOJRN",
+      "journal_images": "*AFTER",
+      "columns": [
+        {
+          "name": "ID",
+          "type": "INTEGER",
+          "length": 4,
+          "numeric_precision": 10,
+          "numeric_scale": 0,
+          "ccsid": null,
+          "nullable": false,
+          "ordinal": 1
+        }
+      ],
+      "constraints": [],
+      "indexes": []
+    },
+    {
+      "name": "EXPENS",
+      "row_count": 0,
+      "data_size": 0,
+      "member_count": 1,
+      "journal_library": "DEMOLIB",
+      "journal_name": "DEMOJRN",
+      "journal_images": "*AFTER",
+      "columns": [
+        {
+          "name": "ID",
+          "type": "INTEGER",
+          "length": 4,
+          "numeric_precision": 10,
+          "numeric_scale": 0,
+          "ccsid": null,
+          "nullable": false,
+          "ordinal": 1
+        }
+      ],
+      "constraints": [],
+      "indexes": []
+    },
+    {
+      "name": "DATE01",
+      "row_count": 0,
+      "data_size": 0,
+      "member_count": 1,
+      "journal_library": "DEMOLIB",
+      "journal_name": "DEMOJRN",
+      "journal_images": "*AFTER",
+      "columns": [
+        {
+          "name": "ID",
+          "type": "INTEGER",
+          "length": 4,
+          "numeric_precision": 10,
+          "numeric_scale": 0,
+          "ccsid": null,
+          "nullable": false,
+          "ordinal": 1
+        }
+      ],
+      "constraints": [],
+      "indexes": []
+    },
+    {
+      "name": "SALE",
+      "row_count": 0,
+      "data_size": 0,
+      "member_count": 1,
+      "journal_library": "DEMOLIB",
+      "journal_name": "DEMOJRN",
+      "journal_images": "*AFTER",
+      "columns": [
+        {
+          "name": "ID",
+          "type": "INTEGER",
+          "length": 4,
+          "numeric_precision": 10,
+          "numeric_scale": 0,
+          "ccsid": null,
+          "nullable": false,
+          "ordinal": 1
+        }
+      ],
+      "constraints": [],
+      "indexes": []
+    },
+    {
+      "name": "PLACE01",
+      "row_count": 0,
+      "data_size": 0,
+      "member_count": 1,
+      "journal_library": "DEMOLIB",
+      "journal_name": "DEMOJRN",
+      "journal_images": "*AFTER",
+      "columns": [
+        {
+          "name": "ID",
+          "type": "INTEGER",
+          "length": 4,
+          "numeric_precision": 10,
+          "numeric_scale": 0,
+          "ccsid": null,
+          "nullable": false,
+          "ordinal": 1
+        }
+      ],
+      "constraints": [],
+      "indexes": []
+    },
+    {
+      "name": "PLACES",
+      "row_count": 0,
+      "data_size": 0,
+      "member_count": 1,
+      "journal_library": "DEMOLIB",
+      "journal_name": "DEMOJRN",
+      "journal_images": "*AFTER",
+      "columns": [
+        {
+          "name": "ID",
+          "type": "INTEGER",
+          "length": 4,
+          "numeric_precision": 10,
+          "numeric_scale": 0,
+          "ccsid": null,
+          "nullable": false,
+          "ordinal": 1
+        }
+      ],
+      "constraints": [],
+      "indexes": []
+    },
+    {
+      "name": "CNTR",
+      "row_count": 0,
+      "data_size": 0,
+      "member_count": 1,
+      "journal_library": "DEMOLIB",
+      "journal_name": "DEMOJRN",
+      "journal_images": "*AFTER",
+      "columns": [
+        {
+          "name": "ID",
+          "type": "INTEGER",
+          "length": 4,
+          "numeric_precision": 10,
+          "numeric_scale": 0,
+          "ccsid": null,
+          "nullable": false,
+          "ordinal": 1
+        }
+      ],
+      "constraints": [],
+      "indexes": []
+    },
+    {
+      "name": "PRODUCT",
+      "row_count": 0,
+      "data_size": 0,
+      "member_count": 1,
+      "journal_library": "DEMOLIB",
+      "journal_name": "DEMOJRN",
+      "journal_images": "*AFTER",
+      "columns": [
+        {
+          "name": "ID",
+          "type": "INTEGER",
+          "length": 4,
+          "numeric_precision": 10,
+          "numeric_scale": 0,
+          "ccsid": null,
+          "nullable": false,
+          "ordinal": 1
+        }
+      ],
+      "constraints": [],
+      "indexes": []
+    },
+    {
+      "name": "HOLIDAYS",
+      "row_count": 0,
+      "data_size": 0,
+      "member_count": 1,
+      "journal_library": "DEMOLIB",
+      "journal_name": "DEMOJRN",
+      "journal_images": "*AFTER",
+      "columns": [
+        {
+          "name": "ID",
+          "type": "INTEGER",
+          "length": 4,
+          "numeric_precision": 10,
+          "numeric_scale": 0,
+          "ccsid": null,
+          "nullable": false,
+          "ordinal": 1
+        }
+      ],
+      "constraints": [],
+      "indexes": []
+    }
+  ]
+}

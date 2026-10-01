@@ -1,0 +1,31 @@
+{{- /*
+  NetworkPolicy de base, optionnelle : désactivée par défaut, elle ne change
+  rien au comportement réseau existant. Activée, elle isole les pods du
+  release dans leur propre namespace et n'autorise que le DNS et le trafic
+  sortant : le lecteur IBM i et les Jobs de vérification n'exposent aucun
+  service entrant, seul le control plane écoute (voir controlPlane.host).
+*/ -}}
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "quadringent.fullname" . }}
+  labels:
+    {{- include "quadringent.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "quadringent.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    {{- if and .Values.controlPlane.enabled (ne .Values.controlPlane.host "127.0.0.1") }}
+    - ports:
+        - port: {{ .Values.controlPlane.port }}
+          protocol: TCP
+    {{- end }}
+  egress:
+    - {}
+{{- end }}

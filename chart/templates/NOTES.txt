@@ -1,0 +1,26 @@
+Quadringent {{ .Chart.AppVersion }} déployé en tant que {{ include "quadringent.fullname" . }}.
+
+{{- if .Values.controlPlane.v2.enabled }}
+  Control plane : {{ .Values.controlPlane.v2.image.repository | default .Values.controlPlane.image.repository }}@{{ .Values.controlPlane.v2.image.digest | default .Values.controlPlane.image.digest }}
+  API v2        : kubectl -n {{ .Release.Namespace }} port-forward deploy/{{ include "quadringent.fullname" . }}-control-plane {{ .Values.controlPlane.v2.port }}:{{ .Values.controlPlane.v2.port }}
+  Capture      : lecteurs et chargeurs gérés par le control plane.
+{{- else }}
+  Image        : {{ include "quadringent.image" . }}
+{{- if and .Values.ibmi.schema .Values.ibmi.table }}
+  Table        : {{ .Values.ibmi.schema }}.{{ .Values.ibmi.table }}
+{{- end }}
+{{- if and .Values.ibmi.journalLibrary .Values.ibmi.journalName }}
+  Journal      : {{ .Values.ibmi.journalLibrary }}/{{ .Values.ibmi.journalName }}
+{{- end }}
+  Réplicas     : {{ .Values.replicaCount }} (0 au repos, 1 maximum : un seul lecteur de journal)
+{{- end }}
+{{- if eq (.Values.storage.backend | default "aws") "gcs" }}
+  Raw          : gs://{{ .Values.storage.rawBucket }}/{{ .Values.storage.rawPrefix }}
+{{- else }}
+  Raw          : s3://{{ .Values.storage.rawBucket }}/{{ .Values.storage.rawPrefix }}
+{{- end }}
+{{- if and (eq (.Values.storage.backend | default "aws") "aws") .Values.costGuardrail.enabled }}
+
+  Seuil S3 déclaré : {{ .Values.costGuardrail.requestAlarmThresholdPerDay }} requêtes par jour.
+  Vérifier séparément l'alerte de facturation du compte AWS ; la chart ne la crée pas.
+{{- end }}

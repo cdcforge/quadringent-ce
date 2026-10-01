@@ -1,0 +1,513 @@
+/* Cockpit v2 — accueil, connexion, table (design §3). Réutilise les jetons
+ * de fondation ; aucune couleur codée en dur ici, pour rester correct dans
+ * les deux thèmes (product-tokens.css redéfinit les jetons en sombre). */
+
+.board__kicker {
+  font-size: var(--t-small);
+  color: var(--ink-3);
+  margin: 0 0 var(--space-2);
+}
+
+.board__kicker a { color: inherit; }
+.board__kicker a:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* --- Bandeau d'attention : un seul par écran, jamais un cri --- */
+
+.cockpit-attention-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  background: var(--signal-attention-soft);
+  border-radius: var(--r-sm);
+  font-size: var(--t-small);
+  color: var(--ink-1);
+}
+
+.cockpit-attention-banner > span:first-child {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
+  background: var(--signal-attention);
+}
+
+.cockpit-attention-banner > span:last-of-type { flex: 1; }
+
+.cockpit-banner-link {
+  flex: none;
+  font-weight: var(--w-medium);
+  color: var(--signal-attention);
+  white-space: nowrap;
+}
+
+.cockpit-banner-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+.cockpit-home__header-actions { display: flex; align-items: center; gap: var(--space-2); }
+
+.cockpit-confirmations__feedback {
+  margin: 0 0 var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sm);
+  background: var(--surface-quiet);
+  color: var(--ink-1);
+}
+
+.cockpit-confirmations__list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.cockpit-confirmations__item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-6);
+  padding: var(--space-5);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  background: var(--surface-panel);
+}
+.cockpit-confirmations__main { min-width: 0; }
+.cockpit-confirmations__main h2,
+.cockpit-confirmations__dialog h2 { margin: 0 0 var(--space-2); font-size: var(--t-lead); color: var(--ink-1); }
+.cockpit-confirmations__eyebrow {
+  margin: 0 0 var(--space-2);
+  font-size: var(--t-micro);
+  font-weight: var(--w-medium);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.cockpit-confirmations__reason { margin: 0 0 var(--space-3); color: var(--ink-2); }
+.cockpit-confirmations__meta { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); margin: 0; font-size: var(--t-small); color: var(--ink-3); }
+.cockpit-confirmations__meta a { color: var(--accent); }
+.cockpit-confirmations__risk { margin: var(--space-3) 0 0; color: var(--signal-attention); font-size: var(--t-small); }
+.cockpit-confirmations__actions { display: flex; gap: var(--space-2); flex: none; }
+
+.cockpit-confirmations__overlay { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: var(--space-5); background: rgb(14 24 32 / 48%); }
+.cockpit-confirmations__dialog { width: min(100%, 540px); padding: var(--space-6); border: 1px solid var(--rule-firm); border-radius: var(--r-md); background: var(--surface-panel); box-shadow: var(--shadow-panel); color: var(--ink-2); }
+.cockpit-confirmations__dialog p { line-height: 1.5; }
+.cockpit-confirmations__dialog-actions { display: flex; justify-content: flex-end; align-items: center; gap: var(--space-3); margin-top: var(--space-5); }
+
+/* --- ControlsPanel : une barre d'actions compacte, même emplacement en
+   tête de chaque écran (accueil/connexion/table — un seul niveau visible à
+   la fois sur l'écran connexion, choisi par un sélecteur de portée porté
+   par l'écran, jamais trois panneaux empilés). --- */
+
+.controls-panel {
+  background: var(--surface-panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  padding: var(--space-3) var(--space-5);
+  margin-bottom: var(--space-5);
+}
+
+.controls-panel__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.controls-panel__scope {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.controls-panel__scope-level {
+  font-size: var(--t-micro);
+  font-weight: var(--w-medium);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.controls-panel__scope-target {
+  font-size: var(--t-small);
+  color: var(--ink-2);
+}
+
+.controls-panel__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.controls-panel__action {
+  font-family: var(--font-plex-sans);
+  font-size: var(--t-small);
+  font-weight: var(--w-medium);
+  color: var(--ink-2);
+  background: var(--paper-sunk);
+  border: 1px solid var(--rule-firm);
+  border-radius: var(--radius-panel);
+  padding: 6px var(--space-4);
+  min-height: 32px;
+}
+
+.controls-panel__action:hover:not(:disabled) { background: var(--surface-quiet); }
+.controls-panel__action:disabled { color: var(--ink-4); cursor: not-allowed; }
+
+/* Menu « Plus » : les actions sensibles (retirer/relancer/rejouer) n'ont
+   pas leur place au même niveau visuel que suspendre/reprendre — un
+   disclosure natif (pas de JS de positionnement, fermeture au clic
+   extérieur gratuite). */
+.controls-panel__more { position: relative; }
+
+.controls-panel__more > summary {
+  list-style: none;
+  cursor: pointer;
+  font-family: var(--font-plex-sans);
+  font-size: var(--t-small);
+  font-weight: var(--w-medium);
+  color: var(--ink-2);
+  background: var(--paper-sunk);
+  border: 1px solid var(--rule-firm);
+  border-radius: var(--radius-panel);
+  padding: 6px var(--space-4);
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.controls-panel__more > summary::-webkit-details-marker { display: none; }
+.controls-panel__more > summary::after { content: '▾'; margin-left: var(--space-2); font-size: 10px; color: var(--ink-4); }
+.controls-panel__more > summary:hover { background: var(--surface-quiet); }
+.controls-panel__more[open] > summary { background: var(--surface-quiet); border-color: var(--ink-3); }
+
+.controls-panel__more-menu {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 220px;
+  padding: var(--space-2);
+  background: var(--surface-panel);
+  border: 1px solid var(--rule-firm);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-panel);
+}
+
+.controls-panel__more-menu .controls-panel__action { width: 100%; text-align: left; border-color: transparent; background: transparent; }
+.controls-panel__more-menu .controls-panel__action--destructive:hover:not(:disabled) { background: var(--signal-incident-soft); }
+
+/* Une seule action primaire visible à la fois : celle en attente de
+   confirmation/approbation. Les actions du plateau restent toutes
+   quiet — aucune n'est « la » primaire tant qu'elle n'est pas engagée. */
+.controls-panel__action--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.controls-panel__action--primary:hover:not(:disabled) { filter: brightness(1.05); }
+
+/* Action sensible (retirer/relancer/rejouer) : visuellement distincte,
+   jamais confondue avec suspendre/reprendre. */
+.controls-panel__action--destructive {
+  color: var(--signal-incident);
+  border-color: var(--signal-incident);
+  background: transparent;
+}
+
+.controls-panel__action--destructive:hover:not(:disabled) { background: var(--signal-incident-soft); }
+
+.controls-panel__cancel {
+  font-family: var(--font-plex-sans);
+  font-size: var(--t-small);
+  color: var(--ink-3);
+  background: transparent;
+  border: 0;
+  padding: var(--space-2) var(--space-3);
+}
+
+.controls-panel__cancel:hover { color: var(--ink-1); text-decoration: underline; text-underline-offset: 3px; }
+
+.controls-panel__confirm {
+  margin-top: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  background: var(--surface-quiet);
+  border-radius: var(--r-sm);
+  color: var(--ink-1);
+}
+
+.controls-panel__pending {
+  margin-top: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  background: var(--signal-attention-soft);
+  border-radius: var(--r-sm);
+  color: var(--ink-1);
+}
+
+.controls-panel__confirm-actions {
+  margin-top: var(--space-4);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+.controls-panel__outcome {
+  margin-top: var(--space-4);
+  font-size: var(--t-small);
+}
+
+.controls-panel__outcome--succeeded { color: var(--signal-ok); }
+.controls-panel__outcome--failed { color: var(--signal-incident); }
+
+/* --- Connexion : barre de contrôles à portée choisie (un seul panneau
+   visible, le sélecteur et le panneau partagent la même carte) --- */
+
+.cockpit-connection__scoped-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  background: var(--surface-panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  padding: var(--space-3) var(--space-5);
+  margin-bottom: var(--space-5);
+}
+
+.cockpit-connection__scoped-controls .controls-panel {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+}
+
+.cockpit-connection__scope-select {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--t-micro);
+  font-weight: var(--w-medium);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding-right: var(--space-4);
+  border-right: 1px solid var(--rule);
+}
+
+.cockpit-connection__scope-select select {
+  font-family: var(--font-plex-sans);
+  font-size: var(--t-small);
+  font-weight: var(--w-regular);
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--ink-1);
+  padding: 6px var(--space-2);
+  border: 1px solid var(--rule-firm);
+  border-radius: var(--r-sm);
+  background: var(--surface-panel);
+}
+
+/* --- Connexion : barre d'outils (recherche/tri/ordre) --- */
+
+.cockpit-connection__toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-5);
+}
+
+.cockpit-connection__toolbar input[type='search'] {
+  flex: 1;
+  min-width: 0;
+  max-width: 320px;
+  font-family: var(--font-plex-sans);
+  font-size: var(--t-small);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--rule-firm);
+  border-radius: var(--r-sm);
+  background: var(--surface-panel);
+  color: var(--ink-1);
+}
+
+.cockpit-connection__toolbar label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--t-small);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.cockpit-connection__toolbar select {
+  font-family: var(--font-plex-sans);
+  font-size: var(--t-small);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--rule-firm);
+  border-radius: var(--r-sm);
+  background: var(--surface-panel);
+  color: var(--ink-1);
+}
+
+.cockpit-connection__toolbar > button {
+  flex: none;
+  font-family: var(--font-plex-sans);
+  font-size: var(--t-small);
+  font-weight: var(--w-medium);
+  color: var(--ink-2);
+  background: var(--paper-sunk);
+  border: 1px solid var(--rule-firm);
+  border-radius: var(--r-sm);
+  padding: var(--space-2) var(--space-4);
+  white-space: nowrap;
+}
+
+.cockpit-connection__toolbar > button:hover { background: var(--surface-quiet); }
+
+.cockpit-connection__controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.cockpit-connection__none {
+  color: var(--ink-3);
+  padding: var(--space-5) 0;
+}
+
+/* --- Table : identité (nom humain + id technique), onglets, fenêtre --- */
+
+.cockpit-table__identity { display: flex; flex-direction: column; gap: 2px; }
+
+.cockpit-table__id {
+  font-size: var(--t-small);
+  color: var(--ink-4);
+}
+
+.cockpit-table__tabs { margin: var(--space-6) 0 0; border-bottom: 1px solid var(--rule); }
+
+.cockpit-table__tabs ul {
+  display: flex;
+  gap: var(--space-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cockpit-table__tabs a {
+  display: inline-block;
+  padding: 0 0 var(--space-3);
+  font-size: var(--t-small);
+  color: var(--ink-3);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.cockpit-table__tabs a:hover { color: var(--ink-1); text-decoration: none; }
+
+.cockpit-table__tabs a.is-current {
+  color: var(--ink-1);
+  font-weight: var(--w-medium);
+  border-bottom-color: var(--ink-1);
+}
+
+.cockpit-table__tab { margin-top: var(--space-6); display: flex; flex-direction: column; gap: var(--space-5); }
+
+.cockpit-table__window-toggle {
+  display: inline-flex;
+  width: fit-content;
+  padding: 2px;
+  background: var(--surface-quiet);
+  border-radius: var(--r-sm);
+  margin-bottom: var(--space-2);
+}
+
+.cockpit-table__window-toggle button {
+  font-family: var(--font-plex-sans);
+  font-size: var(--t-small);
+  font-weight: var(--w-medium);
+  color: var(--ink-3);
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-sm);
+  padding: 6px 16px;
+}
+
+.cockpit-table__window-toggle button[aria-pressed='true'] {
+  background: var(--surface-panel);
+  color: var(--ink-1);
+  box-shadow: var(--shadow-panel);
+}
+
+.cockpit-table__note { color: var(--ink-3); font-size: var(--t-small); }
+
+.cockpit-table__activity,
+.cockpit-table__logs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: var(--t-small);
+}
+
+.cockpit-table__activity li,
+.cockpit-table__logs li {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink-2);
+}
+
+.cockpit-table__activity time,
+.cockpit-table__logs time {
+  font-family: var(--font-plex-mono);
+  color: var(--ink-4);
+  flex: none;
+}
+
+.cockpit-table__log-entry--warning { color: var(--signal-attention); }
+.cockpit-table__log-entry--error { color: var(--signal-incident); }
+
+.cockpit-table__incident-tag {
+  margin-left: auto;
+  font-family: var(--font-plex-mono);
+  font-size: var(--t-micro);
+  color: var(--ink-4);
+}
+
+.cockpit-table__log-filters {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  font-size: var(--t-small);
+  color: var(--ink-3);
+}
+
+.cockpit-table__log-filters label { display: flex; align-items: center; gap: var(--space-2); }
+
+.cockpit-table__log-filters select {
+  font-family: var(--font-plex-sans);
+  font-size: var(--t-small);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--rule-firm);
+  border-radius: var(--r-sm);
+  background: var(--surface-panel);
+  color: var(--ink-1);
+}
+
+.cockpit-table__cost-basis,
+.cockpit-table__cost-freshness {
+  font-size: var(--t-small);
+  color: var(--ink-3);
+}
+
+/* --- Le bandeau de raccourcis suit la largeur du contenu réellement
+   affiché : sur un écran vide/en échec, la carte est étroite (62ch,
+   board__empty) — le bandeau ne doit pas s'étirer au-delà. --- */
+.board__empty + .function-key-bar { max-width: 62ch; }

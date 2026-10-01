@@ -1,0 +1,518 @@
+{
+  "format_version": "quadringent-fleet-ui-sidecar-v1",
+  "generated_at": "2000-01-02T00:00:00+00:00",
+  "overview": {
+    "revision": 0,
+    "generated_at": "2000-01-02T00:00:00+00:00",
+    "scope": {
+      "kind": "single",
+      "environments": [
+        "dev"
+      ]
+    },
+    "pipelines": [
+      {
+        "id": "dev-example-corp",
+        "environment": "dev",
+        "status": "unknown",
+        "quality": {
+          "coverage": "partial",
+          "freshness": "stale",
+          "evidence_kind": "simulation"
+        },
+        "summary": "Simulation synthétique vide : aucune observation de client, capture ou destination qualifiée. Les enveloppes historical et admissions de plan sont techniques, sans preuve runtime.",
+        "observed_at": "2000-01-01T00:00:00+00:00",
+        "stages": [
+          {
+            "id": "source",
+            "status": "unknown",
+            "observed_at": "2000-01-01T00:00:00+00:00",
+            "headline": "Catalogue synthétique de démonstration",
+            "detail": "Volumes nuls et date 2000 de scénario ; aucune source réelle observée. historical désigne uniquement le format metadata-only, pas une observation client."
+          },
+          {
+            "id": "capture",
+            "status": "unknown",
+            "observed_at": null,
+            "headline": "Capture non observée",
+            "detail": "Aucune preuve de run de capture n'est fournie"
+          },
+          {
+            "id": "raw",
+            "status": "unknown",
+            "observed_at": null,
+            "headline": "Raw non observé",
+            "detail": "Aucune publication raw n'est observée"
+          },
+          {
+            "id": "load",
+            "status": "unknown",
+            "observed_at": null,
+            "headline": "Chargement non observé",
+            "detail": "Aucune preuve de chargement n'est fournie"
+          },
+          {
+            "id": "destination",
+            "status": "unknown",
+            "observed_at": null,
+            "headline": "Destination non observée",
+            "detail": "Aucune preuve d'application destination n'est fournie"
+          }
+        ],
+        "lag_sequences": null,
+        "lag_seconds": null,
+        "lag_series": null,
+        "counters": {
+          "cpu_ms_per_event": null,
+          "duplicates_in_target": null,
+          "empty_scans": null,
+          "errors": null,
+          "events_in_target": null,
+          "events_published": null,
+          "idle_polls": null,
+          "mean_mcpu": null,
+          "payload_bytes_published": null,
+          "polls": null,
+          "receiver_rotations": null,
+          "run_duration_s": null,
+          "windows_published": null
+        },
+        "incident": null,
+        "observability": {
+          "status": "unobserved",
+          "quality": {
+            "coverage": "partial",
+            "freshness": "stale",
+            "evidence_kind": "historical"
+          },
+          "observed_at": null,
+          "reason": "Observabilité non observée : aucune preuve SLO n'est fournie par le catalogue metadata-only",
+          "checks": [],
+          "alerts": []
+        },
+        "position": null,
+        "flux": null,
+        "run": null,
+        "lag_verdict": null,
+        "lag_verdict_reason": "verdict_not_declared",
+        "destination": null,
+        "destination_reason": "destination_not_attached",
+        "resume": null
+      }
+    ],
+    "sources": [
+      {
+        "id": "dev-example-corp",
+        "evidence_kind": "historical",
+        "environment": "dev",
+        "status": "available",
+        "error": null
+      }
+    ]
+  },
+  "fleet": {
+    "environment": "DEV",
+    "source_schema": "SALES",
+    "destination_namespace": "EXAMPLE_RAW.IBMI_DEV",
+    "observed_at": "2000-01-01T00:00:00+00:00",
+    "provenance": {
+      "kind": "metadata_catalog",
+      "catalog_format": "quadringent-fleet-catalog-v1",
+      "plan_format": "quadringent-fleet-plan-v1",
+      "observed_at": "2000-01-01T00:00:00+00:00"
+    },
+    "freshness": "stale",
+    "continuity": "uncertain",
+    "live_blocked": true,
+    "certification_blocked": true,
+    "live_promise": "blocked",
+    "certification_promise": "blocked",
+    "promise_blockers": [
+      "uncertain_continuity"
+    ],
+    "history_admitted": true,
+    "cutover_checkpoint": {
+      "receiver": "DEMORECV",
+      "sequence": 1
+    },
+    "cutover_required_before_history": true,
+    "journal": {
+      "library": "DEMOLIB",
+      "name": "DEMOJRN",
+      "reader_kind": "multi_object",
+      "reader_count": 1,
+      "table_names": [
+        "ADDRS1",
+        "CAL001",
+        "COST1",
+        "CUSTOM1",
+        "ORDER",
+        "EXPENS",
+        "DATE01",
+        "SALE",
+        "PLACE01",
+        "PLACES",
+        "CNTR",
+        "PRODUCT",
+        "HOLIDAYS"
+      ],
+      "continuity": "uncertain"
+    },
+    "identity": {
+      "keyed_count": 0,
+      "rrn_count": 13,
+      "blocked_count": 0,
+      "keyed": [],
+      "rrn": [
+        "ADDRS1",
+        "CAL001",
+        "COST1",
+        "CUSTOM1",
+        "ORDER",
+        "EXPENS",
+        "DATE01",
+        "SALE",
+        "PLACE01",
+        "PLACES",
+        "CNTR",
+        "PRODUCT",
+        "HOLIDAYS"
+      ],
+      "blocked": []
+    },
+    "observed_totals": {
+      "table_count": 13,
+      "row_count": 0,
+      "data_size": 0
+    },
+    "historical": {
+      "max_concurrency": 4,
+      "byte_budget": null,
+      "admitted_count": 13,
+      "excluded_count": 0,
+      "lanes": [
+        {
+          "slot": 1,
+          "tables": [
+            "ADDRS1",
+            "CUSTOM1",
+            "ORDER",
+            "SALE"
+          ],
+          "row_count": 0,
+          "data_size": 0
+        },
+        {
+          "slot": 2,
+          "tables": [
+            "CAL001",
+            "DATE01",
+            "PLACE01"
+          ],
+          "row_count": 0,
+          "data_size": 0
+        },
+        {
+          "slot": 3,
+          "tables": [
+            "CNTR",
+            "EXPENS",
+            "PLACES"
+          ],
+          "row_count": 0,
+          "data_size": 0
+        },
+        {
+          "slot": 4,
+          "tables": [
+            "COST1",
+            "HOLIDAYS",
+            "PRODUCT"
+          ],
+          "row_count": 0,
+          "data_size": 0
+        }
+      ]
+    },
+    "cost": {
+      "status": "unknown",
+      "observed": null,
+      "unknown_because": "coût réel non observé"
+    },
+    "tables": [
+      {
+        "name": "ADDRS1",
+        "row_count": 0,
+        "data_size": 0,
+        "journal_images": "*AFTER",
+        "identity_status": "rrn",
+        "identity_source": "journal_rrn",
+        "candidate_key": [
+          "_rrn"
+        ],
+        "live_possible": false,
+        "certification_possible": false,
+        "historical_admitted": true,
+        "historical_lane": 1,
+        "blocked_reasons": [
+          "uncertain_continuity"
+        ],
+        "copied_rows": null,
+        "copied_bytes": null,
+        "history_progress": null
+      },
+      {
+        "name": "CAL001",
+        "row_count": 0,
+        "data_size": 0,
+        "journal_images": "*AFTER",
+        "identity_status": "rrn",
+        "identity_source": "journal_rrn",
+        "candidate_key": [
+          "_rrn"
+        ],
+        "live_possible": false,
+        "certification_possible": false,
+        "historical_admitted": true,
+        "historical_lane": 2,
+        "blocked_reasons": [
+          "uncertain_continuity"
+        ],
+        "copied_rows": null,
+        "copied_bytes": null,
+        "history_progress": null
+      },
+      {
+        "name": "COST1",
+        "row_count": 0,
+        "data_size": 0,
+        "journal_images": "*AFTER",
+        "identity_status": "rrn",
+        "identity_source": "journal_rrn",
+        "candidate_key": [
+          "_rrn"
+        ],
+        "live_possible": false,
+        "certification_possible": false,
+        "historical_admitted": true,
+        "historical_lane": 4,
+        "blocked_reasons": [
+          "uncertain_continuity"
+        ],
+        "copied_rows": null,
+        "copied_bytes": null,
+        "history_progress": null
+      },
+      {
+        "name": "CUSTOM1",
+        "row_count": 0,
+        "data_size": 0,
+        "journal_images": "*AFTER",
+        "identity_status": "rrn",
+        "identity_source": "journal_rrn",
+        "candidate_key": [
+          "_rrn"
+        ],
+        "live_possible": false,
+        "certification_possible": false,
+        "historical_admitted": true,
+        "historical_lane": 1,
+        "blocked_reasons": [
+          "uncertain_continuity"
+        ],
+        "copied_rows": null,
+        "copied_bytes": null,
+        "history_progress": null
+      },
+      {
+        "name": "ORDER",
+        "row_count": 0,
+        "data_size": 0,
+        "journal_images": "*AFTER",
+        "identity_status": "rrn",
+        "identity_source": "journal_rrn",
+        "candidate_key": [
+          "_rrn"
+        ],
+        "live_possible": false,
+        "certification_possible": false,
+        "historical_admitted": true,
+        "historical_lane": 1,
+        "blocked_reasons": [
+          "uncertain_continuity"
+        ],
+        "copied_rows": null,
+        "copied_bytes": null,
+        "history_progress": null
+      },
+      {
+        "name": "EXPENS",
+        "row_count": 0,
+        "data_size": 0,
+        "journal_images": "*AFTER",
+        "identity_status": "rrn",
+        "identity_source": "journal_rrn",
+        "candidate_key": [
+          "_rrn"
+        ],
+        "live_possible": false,
+        "certification_possible": false,
+        "historical_admitted": true,
+        "historical_lane": 3,
+        "blocked_reasons": [
+          "uncertain_continuity"
+        ],
+        "copied_rows": null,
+        "copied_bytes": null,
+        "history_progress": null
+      },
+      {
+        "name": "DATE01",
+        "row_count": 0,
+        "data_size": 0,
+        "journal_images": "*AFTER",
+        "identity_status": "rrn",
+        "identity_source": "journal_rrn",
+        "candidate_key": [
+          "_rrn"
+        ],
+        "live_possible": false,
+        "certification_possible": false,
+        "historical_admitted": true,
+        "historical_lane": 2,
+        "blocked_reasons": [
+          "uncertain_continuity"
+        ],
+        "copied_rows": null,
+        "copied_bytes": null,
+        "history_progress": null
+      },
+      {
+        "name": "SALE",
+        "row_count": 0,
+        "data_size": 0,
+        "journal_images": "*AFTER",
+        "identity_status": "rrn",
+        "identity_source": "journal_rrn",
+        "candidate_key": [
+          "_rrn"
+        ],
+        "live_possible": false,
+        "certification_possible": false,
+        "historical_admitted": true,
+        "historical_lane": 1,
+        "blocked_reasons": [
+          "uncertain_continuity"
+        ],
+        "copied_rows": null,
+        "copied_bytes": null,
+        "history_progress": null
+      },
+      {
+        "name": "PLACE01",
+        "row_count": 0,
+        "data_size": 0,
+        "journal_images": "*AFTER",
+        "identity_status": "rrn",
+        "identity_source": "journal_rrn",
+        "candidate_key": [
+          "_rrn"
+        ],
+        "live_possible": false,
+        "certification_possible": false,
+        "historical_admitted": true,
+        "historical_lane": 2,
+        "blocked_reasons": [
+          "uncertain_continuity"
+        ],
+        "copied_rows": null,
+        "copied_bytes": null,
+        "history_progress": null
+      },
+      {
+        "name": "PLACES",
+        "row_count": 0,
+        "data_size": 0,
+        "journal_images": "*AFTER",
+        "identity_status": "rrn",
+        "identity_source": "journal_rrn",
+        "candidate_key": [
+          "_rrn"
+        ],
+        "live_possible": false,
+        "certification_possible": false,
+        "historical_admitted": true,
+        "historical_lane": 3,
+        "blocked_reasons": [
+          "uncertain_continuity"
+        ],
+        "copied_rows": null,
+        "copied_bytes": null,
+        "history_progress": null
+      },
+      {
+        "name": "CNTR",
+        "row_count": 0,
+        "data_size": 0,
+        "journal_images": "*AFTER",
+        "identity_status": "rrn",
+        "identity_source": "journal_rrn",
+        "candidate_key": [
+          "_rrn"
+        ],
+        "live_possible": false,
+        "certification_possible": false,
+        "historical_admitted": true,
+        "historical_lane": 3,
+        "blocked_reasons": [
+          "uncertain_continuity"
+        ],
+        "copied_rows": null,
+        "copied_bytes": null,
+        "history_progress": null
+      },
+      {
+        "name": "PRODUCT",
+        "row_count": 0,
+        "data_size": 0,
+        "journal_images": "*AFTER",
+        "identity_status": "rrn",
+        "identity_source": "journal_rrn",
+        "candidate_key": [
+          "_rrn"
+        ],
+        "live_possible": false,
+        "certification_possible": false,
+        "historical_admitted": true,
+        "historical_lane": 4,
+        "blocked_reasons": [
+          "uncertain_continuity"
+        ],
+        "copied_rows": null,
+        "copied_bytes": null,
+        "history_progress": null
+      },
+      {
+        "name": "HOLIDAYS",
+        "row_count": 0,
+        "data_size": 0,
+        "journal_images": "*AFTER",
+        "identity_status": "rrn",
+        "identity_source": "journal_rrn",
+        "candidate_key": [
+          "_rrn"
+        ],
+        "live_possible": false,
+        "certification_possible": false,
+        "historical_admitted": true,
+        "historical_lane": 4,
+        "blocked_reasons": [
+          "uncertain_continuity"
+        ],
+        "copied_rows": null,
+        "copied_bytes": null,
+        "history_progress": null
+      }
+    ]
+  }
+}

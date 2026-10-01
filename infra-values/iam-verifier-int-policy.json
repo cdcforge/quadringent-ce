@@ -1,0 +1,91 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListEvntRunsAndFleetPrefixOnly",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::example-corp-000000000000-int-example-corp-raw",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "as400/sales/sale/runs/*",
+            "as400/sales/fleet/*",
+            "as400/sales/*/journal/*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "ReadIsolatedEvntRunsOnly",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::example-corp-000000000000-int-example-corp-raw/as400/sales/sale/runs/*"
+    },
+    {
+      "Sid": "ReadPreviousEvntProofOnly",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::example-corp-000000000000-int-example-corp-raw/as400/sales/sale/proofs/cdcforge-autonomous-latest.json"
+    },
+    {
+      "Sid": "ReadFleetConsoleSnapshotOnly",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::example-corp-000000000000-int-example-corp-raw/as400/sales/fleet/console-snapshot.json"
+    },
+    {
+      "Sid": "ReadDevRegionMetricStatistics",
+      "Effect": "Allow",
+      "Action": "cloudwatch:GetMetricStatistics",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "eu-west-3"
+        }
+      }
+    },
+    {
+      "Sid": "PublishLatestEvntProofOnly",
+      "Effect": "Allow",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::example-corp-000000000000-int-example-corp-raw/as400/sales/sale/proofs/cdcforge-autonomous-latest.json"
+    },
+    {
+      "Sid": "PublishWindowDestinationProofOnly",
+      "Effect": "Allow",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::example-corp-000000000000-int-example-corp-raw/as400/sales/sale/runs/*/windows/*/destination.json"
+    },
+    {
+      "Sid": "ReadFleetConsoleProofOnly",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::example-corp-000000000000-int-example-corp-raw/as400/sales/fleet/console-proof.json"
+    },
+    {
+      "Sid": "PublishFleetConsoleProofOnly",
+      "Effect": "Allow",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::example-corp-000000000000-int-example-corp-raw/as400/sales/fleet/console-proof.json"
+    },
+    {
+      "Sid": "ReadFleetJournalManifestsOnly",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::example-corp-000000000000-int-example-corp-raw/as400/sales/*/journal/*.manifest.json"
+    },
+    {
+      "Sid": "ReadFleetLoadLedgerOnly",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::example-corp-000000000000-int-example-corp-raw/as400/sales/fleet/load-ledger.json"
+    },
+    {
+      "Sid": "PublishFleetLoadLedgerOnly",
+      "Effect": "Allow",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::example-corp-000000000000-int-example-corp-raw/as400/sales/fleet/load-ledger.json"
+    }
+  ]
+}
