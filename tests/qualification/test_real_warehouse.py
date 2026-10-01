@@ -94,6 +94,7 @@ def test_charge_par_le_moteur_sql_produit_dans_un_run_isole(secret_file: Path) -
     storage = object()
 
     def connect(**kwargs: object) -> Connection:
+        assert "timeout_seconds" not in kwargs
         assert kwargs["private_key_pem"] == "fixture-private-key"
         assert kwargs["warehouse"] == "QDT_WH_QUAL"
         connection = Connection()
@@ -299,3 +300,83 @@ def test_secret_snowflake_doit_rester_hors_des_arguments_et_prive(secret_file: P
     link.symlink_to(secret_file)
     with pytest.raises(ValueError, match="Snowflake credential"):
         SnowflakeQualificationWarehouse(_config(link), storage_backend=object())
+
+
+@pytest.mark.parametrize('rows,expected', [([], None), ([("marker-1",)], "marker-1")])
+def test_probe_relit_le_miroir_par_select_parametre_et_ferme_la_connexion(secret_file, rows, expected):
+    connections = []
+
+    class ProbeCursor(Cursor):
+        def execute(self, sql, parameters=None):
+            self.sql.append((sql, parameters))
+
+        def fetchall(self):
+            return rows
+
+    def connect(**kwargs):
+        assert kwargs["timeout_seconds"] == 2
+        connection = Connection()
+        connection.latest_cursor = ProbeCursor()
+        connections.append(connection)
+        return connection
+
+    warehouse = SnowflakeQualificationWarehouse(
+        _config(secret_file), storage_backend=object(), connection_factory=connect,
+    )
+    assert warehouse.fetch_mirror_value(schema=SCHEMA, row_key=1, column='LABEL', timeout_seconds=2) == expected
+    connection = connections[0]
+    assert connection.closed and connection.latest_cursor.closed
+    statements = connection.latest_cursor.sql
+    assert statements[0] == ('ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = 2', None)
+    assert 'WHERE ID = %s LIMIT 2' in statements[1][0]
+    assert warehouse.plan.qualified_mirror_table in statements[1][0]
+    assert statements[1][1] == (1,)
+
+
+@pytest.mark.parametrize('cleanup_error', [False, True])
+def test_probe_refuse_doublons_ou_erreur_cleanup_sans_masquer_la_fermeture(secret_file, cleanup_error):
+    connection = Connection()
+
+    class ProbeCursor(Cursor):
+        def execute(self, sql, parameters=None):
+            pass
+
+        def fetchall(self):
+            return [('marker',), ('marker',)]
+
+        def close(self):
+            super().close()
+            if cleanup_error:
+                raise RuntimeError('cleanup failed')
+
+    connection.latest_cursor = ProbeCursor()
+    warehouse = SnowflakeQualificationWarehouse(
+        _config(secret_file), storage_backend=object(), connection_factory=lambda **kwargs: connection,
+    )
+    with pytest.raises((ValueError, RuntimeError)):
+        warehouse.fetch_mirror_value(schema=SCHEMA, row_key=1, column='LABEL', timeout_seconds=1)
+    assert connection.closed and connection.latest_cursor.closed
+
+
+@pytest.mark.parametrize('timeout', [None, 3])
+def test_connecteur_natif_transmet_les_trois_timeouts_seulement_sur_demande(monkeypatch, timeout):
+    import sys
+    from types import SimpleNamespace
+    from scripts import quadringent_destination_loader as loader
+
+    calls = []
+    connector = SimpleNamespace(connect=lambda **kwargs: calls.append(kwargs) or object())
+    monkeypatch.setitem(sys.modules, 'snowflake', SimpleNamespace(connector=connector))
+    monkeypatch.setitem(sys.modules, 'snowflake.connector', connector)
+    serialization = SimpleNamespace(
+        load_pem_private_key=lambda *args, **kwargs: SimpleNamespace(private_bytes=lambda *args: b'key'),
+        Encoding=SimpleNamespace(DER='der'), PrivateFormat=SimpleNamespace(PKCS8='pkcs8'),
+        NoEncryption=lambda: None,
+    )
+    monkeypatch.setitem(sys.modules, 'cryptography', SimpleNamespace())
+    monkeypatch.setitem(sys.modules, 'cryptography.hazmat', SimpleNamespace())
+    monkeypatch.setitem(sys.modules, 'cryptography.hazmat.primitives', SimpleNamespace(serialization=serialization))
+    loader._connect_snowflake(account='example', user='USER', role='ROLE', private_key_pem='fixture',
+                              warehouse='WAREHOUSE', timeout_seconds=timeout)
+    actual = {name: calls[0][name] for name in ('login_timeout', 'network_timeout', 'socket_timeout') if name in calls[0]}
+    assert actual == ({} if timeout is None else {'login_timeout': 3, 'network_timeout': 3, 'socket_timeout': 3})

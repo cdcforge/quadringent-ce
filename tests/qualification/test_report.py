@@ -130,3 +130,97 @@ def test_report_keeps_physical_history_duplicates_visible():
     data = json.loads(to_json(report))
     assert data["reconciliation"]["history"]["duplicate_event_ids"] == ["observed-id"]
     assert "7 ligne(s) physique(s), 5 EVENT_ID distinct(s), 2 doublon(s), snapshots compris" in to_markdown(report)
+
+
+def test_partial_real_pass_is_only_selected_steps_success():
+    report = make_report()
+    report.execution_mode = 'real'
+    data = json.loads(to_json(report))
+    assert data['coverage']['missing_required_steps'] == ['snapshot', 'capture', 'reconcile', 'freshness', 'changes1', 'changes2', 'rotate', 'changes3']
+    assert data['coverage']['complete_product_status'] == 'NOT_VALIDATED'
+    assert 'Statut des étapes sélectionnées : PASS' in to_markdown(report)
+    assert 'Statut global' not in to_markdown(report)
+
+
+def test_fake_and_old_reports_never_claim_complete_qualification():
+    report = make_report()
+    report.execution_mode = 'offline_fake'
+    assert json.loads(to_json(report))['coverage']['complete_product_status'] == 'NOT_VALIDATED'
+    old = report.as_dict()
+    old.pop('execution_mode')
+    assert 'Qualification produit complète : NOT_VALIDATED' in render_markdown(old)
+    assert 'unknown' in render_markdown(old)
+
+
+def test_raw_latency_is_not_mirror_freshness_evidence():
+    data = make_report().as_dict()
+    data['freshness'] = {'count': 3, 'p50': 1, 'p95': 2, 'max': 2}
+    assert 'Fraîcheur du miroir : unknown' in render_markdown(data)
+
+
+def test_mirror_freshness_requires_measured_threshold_not_raw_latency():
+    report, measurement = _mirror_report()
+    assert "Fraîcheur du miroir : PASS" in to_markdown(report)
+    measurement["max_seconds"] = measurement["p95_seconds"] = 11
+    measurement["probes"][2]["observed_upper_bound_seconds"] = 11
+    assert "Fraîcheur du miroir : FAIL" in to_markdown(report)
+    assert "Qualification produit complète : NOT_VALIDATED" in to_markdown(report)
+    measurement["max_seconds"] = float("nan")
+    assert "Fraîcheur du miroir : unknown" in to_markdown(report)
+
+
+def _mirror_report():
+    report = make_report()
+    report.execution_mode = 'real'
+    measurement = {'target': 'snowflake_mirror', 'metric': 'write_to_mirror_observed_upper_bound',
+                   'scope': 'sql_loader_bounded_docker_capture', 'steady_state_streaming': False,
+                   'count': 3, 'p95_seconds': 9, 'max_seconds': 9, 'slo_seconds': 10,
+                   'accepted': True, 'status': 'PASS',
+                   'probes': [{'marker': str(i), 'observed_upper_bound_seconds': i + 7,
+                               'poll_count': 1} for i in range(3)]}
+    report.steps.append(StepResult(name='freshness', status='PASS', details={'mirror_measurement': measurement}))
+    return report, measurement
+
+
+def test_seed_is_required_even_when_other_steps_pass():
+    report = make_report()
+    report.steps.clear()
+    assert 'seed' in json.loads(to_json(report))['coverage']['missing_required_steps']
+
+
+def test_mirror_rejects_fabricated_probe_evidence():
+    from copy import deepcopy
+    report, measurement = _mirror_report()
+    for changes in [{'probes': []}, {'p95_seconds': 8}, {'scope': 'unknown'},
+                    {'steady_state_streaming': True}, {'slo_seconds': True}]:
+        changed = deepcopy(measurement)
+        changed.update(changes)
+        report.steps[-1].details['mirror_measurement'] = changed
+        assert 'Fraîcheur du miroir : PASS' not in to_markdown(report)
+    for field, value in [('marker', ''), ('marker', '1'), ('observed_upper_bound_seconds', 11),
+                         ('observed_upper_bound_seconds', float('nan')), ('poll_count', True),
+                         ('poll_count', 0), ('poll_count', 1000001)]:
+        changed = deepcopy(measurement)
+        changed['probes'][0][field] = value
+        report.steps[-1].details['mirror_measurement'] = changed
+        assert 'Fraîcheur du miroir : PASS' not in to_markdown(report)
+
+
+def test_offline_mirror_verdict_explicitly_simulated():
+    report, _ = _mirror_report()
+    report.execution_mode = 'offline_fake'
+    assert 'Fraîcheur du miroir : PASS (simulation)' in to_markdown(report)
+
+
+def test_mirror_rejects_runtime_impossible_polls_and_zero_duration():
+    report, measurement = _mirror_report()
+    measurement['probes'][0]['poll_count'] = 41
+    assert 'Fraîcheur du miroir : PASS' not in to_markdown(report)
+
+
+def test_mirror_rejects_three_zero_durations():
+    report, measurement = _mirror_report()
+    for probe in measurement['probes']:
+        probe['observed_upper_bound_seconds'] = 0
+    measurement['max_seconds'] = measurement['p95_seconds'] = 0
+    assert 'Fraîcheur du miroir : PASS' not in to_markdown(report)

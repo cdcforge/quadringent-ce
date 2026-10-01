@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import json
+import math
 import re
 from pathlib import Path
 from typing import Any, Mapping
@@ -104,6 +105,24 @@ class WarehouseConfig:
 
 
 @dataclass(frozen=True)
+class FreshnessConfig:
+    """Budget de la borne observée écriture -> miroir, sans qualification streaming."""
+
+    max_seconds: float = 10.0
+    max_polls: int = 20
+    poll_interval_seconds: float = 0.25
+
+    def __post_init__(self) -> None:
+        if (type(self.max_seconds) not in (int, float) or not 1 <= self.max_seconds <= 300
+                or not math.isfinite(self.max_seconds)
+                or type(self.max_polls) is not int or not 1 <= self.max_polls <= 40
+                or type(self.poll_interval_seconds) not in (int, float)
+                or not 0.1 <= self.poll_interval_seconds <= 1
+                or not math.isfinite(self.poll_interval_seconds)):
+            raise ConfigError("budget de fraîcheur invalide : SLO 1..300s, 1..40 lectures, intervalle 0.1..1s")
+
+
+@dataclass(frozen=True)
 class RunConfig:
     run_id: str
     table: TableSchema
@@ -114,6 +133,7 @@ class RunConfig:
     steps: tuple[str, ...]
     bootstrap_sequence: int | None = None
     bootstrap_receiver: str | None = None
+    freshness: FreshnessConfig = field(default_factory=FreshnessConfig)
 
     def resolved_steps(self, requested: str) -> tuple[str, ...]:
         """``"all"`` renvoie ``self.steps`` ; une liste ``"a,b,c"`` est filtrée et validée."""
@@ -157,6 +177,12 @@ def parse_config(text: str, *, fmt: str, env: Mapping[str, str]) -> RunConfig:
     if missing:
         raise ConfigError(f"variables d'environnement non résolues : {sorted(missing)}")
 
+    freshness_raw = resolved.get("freshness", {})
+    if not isinstance(freshness_raw, dict) or set(freshness_raw) - {
+        "max_seconds", "max_polls", "poll_interval_seconds",
+    }:
+        raise ConfigError("freshness doit être un objet contenant seulement les budgets documentés")
+
     try:
         table = _table_schema(resolved["table"])
         source = SourceConfig(
@@ -188,6 +214,7 @@ def parse_config(text: str, *, fmt: str, env: Mapping[str, str]) -> RunConfig:
             database=resolved["warehouse"]["database"],
             schema_name=resolved["warehouse"]["schema"],
         )
+        freshness = FreshnessConfig(**freshness_raw)
         steps = tuple(resolved["steps"])
         run_id = resolved["run_id"]
     except KeyError as error:
@@ -234,7 +261,7 @@ def parse_config(text: str, *, fmt: str, env: Mapping[str, str]) -> RunConfig:
     return RunConfig(
         run_id=run_id, table=table, source=source, capture=capture, storage=storage,
         warehouse=warehouse, steps=steps, bootstrap_sequence=bootstrap_sequence,
-        bootstrap_receiver=bootstrap_receiver,
+        bootstrap_receiver=bootstrap_receiver, freshness=freshness,
     )
 
 

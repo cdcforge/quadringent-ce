@@ -110,7 +110,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "report.json").write_text(to_json(report), encoding="utf-8")
     (out_dir / "report.md").write_text(to_markdown(report), encoding="utf-8")
-    print(f"run {config.run_id} : {report.status} — rapport écrit sous {out_dir}")
+    print(f"run {config.run_id} — étapes sélectionnées : {report.status} ; "
+          f"qualification produit complète : NOT_VALIDATED — rapport écrit sous {out_dir}")
     return 0 if report.status == "PASS" else 1
 
 

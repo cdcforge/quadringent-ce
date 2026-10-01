@@ -6,6 +6,37 @@ qualification de bout en bout mené sur une source IBM i externe le
 23 septembre 2026. Il correspond au § 6 « Qualification continue » de
 `docs/plans/2026-09-23-produit-fini-design.md`.
 
+## Verdict et couverture
+
+`PASS` signifie seulement que les étapes **sélectionnées** ont réussi. Un diagnostic
+partiel conserve ce verdict et son code de sortie ; il ne qualifie pas le produit
+complet. `--steps all` exécute les étapes présentes dans `config.steps`, sans ajouter
+les étapes omises de la configuration.
+
+Le JSON produit ajoute `coverage` : `selected_steps_status`, `execution_mode`,
+`required_steps`, `missing_required_steps`, `complete_product_status`. Les étapes
+requises sont seed, snapshot, capture, reconcile, freshness, changes1, changes2, rotate
+et changes3 ; absente ou non réussie signifie non couverte. Le verdict complet est
+`NOT_VALIDATED` : panne injectée, observabilité native et qualifications GKE/EKS/VM
+restent non validées. Même toutes les étapes réussies en mode `real` ne remplacent
+pas ces preuves. `offline_fake` désigne une simulation. Un ancien JSON sans mode
+ou sans mesure miroir reste `unknown` pour ces preuves ; son ancien `status` ne
+permet jamais de déduire une qualification complète.
+
+La mesure miroir utilise `freshness.details.mirror_measurement` :
+`target=snowflake_mirror`, `metric=write_to_mirror_observed_upper_bound`,
+`scope=sql_loader_bounded_docker_capture`, `steady_state_streaming=false`,
+`count=3`, `p95_seconds`, `max_seconds`, `slo_seconds` (10 secondes par défaut),
+`accepted`, `status` et `probes` (marker, observed_upper_bound_seconds, poll_count).
+Le rendu accepte PASS seulement avec trois mesures finies, un seuil positif et
+un maximum inférieur ou égal au seuil. Les trois probes doivent avoir des marqueurs
+non vides distincts, des durées finies strictement positives et un `poll_count` entier
+entre 1 et 40. Le maximum et le p95 (nearest-rank pour trois probes) doivent
+égaler le maximum observé ; scope et absence de streaming permanent doivent
+correspondre au contrat. Un verdict offline porte explicitement « simulation ». La latence brute `freshness_raw` et
+`freshness.details.raw_latency` n'établit jamais la visibilité du miroir.
+Cette mesure bornée ne qualifie pas le streaming permanent ni une plateforme.
+
 ## Scénario prévu pour un run nightly
 
 Un run nightly est un essai automatique périodique sur une table synthétique
@@ -42,14 +73,12 @@ suivant (voir `src/quadringent_qualification/generator.py`) :
    diffèrent, image « avant » incohérente, séquence de journal manquante/
    dupliquée/inattendue, évènement antérieur à la frontière de bootstrap,
    rejeu divergent) — jamais seulement comptée.
-8. **`freshness`** — trois mises à jour isolées et marquées pour ce run,
-   chacune reliée au lot brut durable par son reçu et son index. Le manifeste,
-   les empreintes et les lignes du lot sont revérifiés avant de prendre
-   l'horodatage de l'objet. L'orchestrateur charge ensuite l'entrepôt et
-   refait le rapprochement sur l'état final. Il résume la latence écriture →
-   lot brut en p50/p95/max. Le lecteur de ce scénario démarre après les trois
-   écritures : la mesure inclut son démarrage et son rattrapage. Elle ne prouve
-   ni la latence du lecteur déjà actif ni la visibilité du miroir.
+8. **`freshness`** — trois mises à jour isolées et marquées pour ce run.
+   Chaque écriture est suivie de capture, chargement et relecture du marqueur
+   dans le miroir avant la suivante. Le temps jusqu'à cette observation est une
+   borne supérieure écriture → miroir, évaluée contre le SLO (10 s par défaut).
+   La publication du lot brut est mesurée séparément. La capture Docker et le
+   chargeur SQL bornés ne prouvent pas un lecteur CDC déjà actif en permanence.
 
 Les fonctions de génération, de normalisation canonique, de rapprochement et
 de statistiques de latence sont **testées hors ligne** :

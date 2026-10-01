@@ -11,6 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import re
+import math
+import time
 from typing import Callable, Sequence
 
 from quadringent.contract import JournalPosition
@@ -18,7 +20,7 @@ from quadringent.contract import JournalPosition
 from .adapters import CaptureBoundary, CaptureRunner, SourceDriver, StorageBackend, WarehouseLoader, RawReplayEvidence
 from .config import RunConfig
 from .generator import DML_STEP_NAMES, LABEL, Oracle, freshness_markers, step_plan
-from .latency import LatencySummary, summarize
+from .latency import LatencySummary, observed_mirror_latency, summarize
 from .published_probes import find_receipted_probes
 from .reconcile import JournalEvent, ReconciliationReport, reconcile
 from .schema import canonical, update_sql
@@ -71,6 +73,7 @@ class RunReport:
     reconciliation: ReconciliationReport | None = None
     freshness: LatencySummary | None = None
     execution_mode: str = "unknown"
+    freshness_raw: LatencySummary | None = None
 
     @property
     def status(self) -> str:
@@ -92,6 +95,7 @@ class RunReport:
             ],
             "reconciliation": self.reconciliation.as_dict() if self.reconciliation else None,
             "freshness": self.freshness.as_dict() if self.freshness else None,
+            "freshness_raw": self.freshness_raw.as_dict() if self.freshness_raw else None,
         }
 
 
@@ -105,6 +109,8 @@ class Orchestrator:
     def __init__(self, config: RunConfig, *, source: SourceDriver, capture: CaptureRunner,
                  storage: StorageBackend, warehouse: WarehouseLoader,
                  clock: Callable[[], datetime] | None = None,
+                 monotonic: Callable[[], float] | None = None,
+                 sleep: Callable[[float], None] | None = None,
                  execution_mode: str = "unknown") -> None:
         if execution_mode not in {"unknown", "real", "offline_fake"}:
             raise ValueError("mode de qualification invalide")
@@ -115,6 +121,8 @@ class Orchestrator:
         self.warehouse = warehouse
         self.execution_mode = execution_mode
         self._clock = clock or (lambda: datetime.now(timezone.utc))
+        self._monotonic = monotonic or time.monotonic
+        self._sleep = sleep or time.sleep
         self.oracle: Oracle = {}
         self.events: list[JournalEvent] = []
         self._capture_label_counter = 0
@@ -122,6 +130,7 @@ class Orchestrator:
         self._snapshot_bootstrap: CaptureBoundary | None = None
         self._capture_bootstrap: CaptureBoundary | None = None
         self._last_freshness: LatencySummary | None = None
+        self._last_freshness_raw: LatencySummary | None = None
 
     def run(self, steps: Sequence[str]) -> RunReport:
         report = RunReport(run_id=self.config.run_id, execution_mode=self.execution_mode)
@@ -144,6 +153,7 @@ class Orchestrator:
         report.reconciliation = self._last_reconciliation
         if "freshness" in steps:
             report.freshness = self._last_freshness
+            report.freshness_raw = self._last_freshness_raw
         return report
 
     def _run_step(self, name: str) -> StepResult:
@@ -340,69 +350,158 @@ class Orchestrator:
         )
 
     def _run_freshness(self) -> dict[str, object]:
+        budget = self.config.freshness
+        values: list[float] = []
+        raw_values: list[float] = []
+        probes: list[dict[str, object]] = []
         self._last_freshness = summarize([])
+        self._last_freshness_raw = summarize([])
+
+        def evidence(accepted: bool) -> dict[str, object]:
+            return {
+                "target": "snowflake_mirror", "metric": "write_to_mirror_observed_upper_bound",
+                "scope": "sql_loader_bounded_docker_capture", "steady_state_streaming": False,
+                "count": len(values), "p95_seconds": self._last_freshness.p95,
+                "max_seconds": self._last_freshness.maximum, "slo_seconds": budget.max_seconds,
+                "accepted": accepted, "status": "PASS" if accepted else "FAIL", "probes": probes,
+            }
+
+        def fail(reason: str, **details: object) -> dict[str, object]:
+            self._last_reconciliation = None
+            return {**details, "reason": reason, "mirror_measurement": evidence(False), "_failed": True}
+
         if (self._last_reconciliation is None or self._last_reconciliation.status != "PASS"
                 or self._capture_bootstrap is None or 1 not in self.oracle):
-            return {"reason": "freshness_not_measured", "_failed": True}
+            return fail("freshness_not_measured")
         schema = self.config.table
-        label = schema.column(LABEL)
         markers = freshness_markers(self.config.run_id)
+        label = schema.column(LABEL)
         if (schema.primary_key != "ORDER_ID" or label.kind != "varchar"
                 or label.length is not None and any(len(marker) > label.length for marker in markers)):
-            return {"reason": "freshness_schema_unsupported", "_failed": True}
-
-        writes: list[tuple[datetime, datetime]] = []
-        # Une mutation peut avoir abouti même si son appelant reçoit une
-        # erreur : l'ancien rapprochement ne doit plus être affiché comme final.
+            return fail("freshness_schema_unsupported")
         self._last_reconciliation = None
+        raw = None
+        event_ids = []
         for marker in markers:
-            before = self._clock()
-            result = self.source.execute((update_sql(schema, 1, {LABEL: marker}),))
-            after = self._clock()
-            if (before.tzinfo is None or before.utcoffset() is None
-                    or after.tzinfo is None or after.utcoffset() is None or after < before):
-                return {"reason": "freshness_clock_invalid", "_failed": True}
+            try:
+                before = self._clock()
+                start = self._monotonic()
+                if not math.isfinite(start):
+                    return fail("freshness_clock_invalid")
+            except Exception:
+                return fail("freshness_clock_invalid")
+            latest = before
+            latest_monotonic = start
+
+            def observe() -> tuple[datetime, float]:
+                nonlocal latest, latest_monotonic
+                now = self._clock()
+                monotonic = self._monotonic()
+                if (not isinstance(before, datetime) or before.tzinfo is None or before.utcoffset() is None
+                        or not isinstance(now, datetime) or now.tzinfo is None or now.utcoffset() is None
+                        or now < latest or not math.isfinite(monotonic) or monotonic < latest_monotonic
+                        or abs((now - before).total_seconds() - (monotonic - start)) > 1):
+                    raise ValueError("horloge de fraîcheur invalide")
+                latest, latest_monotonic = now, monotonic
+                return now, monotonic - start
+
+            try:
+                observe()
+            except Exception:
+                return fail("freshness_clock_invalid")
+            try:
+                result = self.source.execute((update_sql(schema, 1, {LABEL: marker}),))
+            except Exception:
+                return fail("freshness_write_failed")
+            try:
+                after, _ = observe()
+            except Exception:
+                return fail("freshness_clock_invalid")
             if result.exit_code != 0:
-                return {"reason": "freshness_write_failed", "_failed": True}
+                return fail("freshness_write_failed")
             self.oracle[1] = {**self.oracle[1], LABEL: marker}
-            writes.append((before, after))
-
-        capture = self._run_capture()
-        if capture.get("_failed"):
-            return {"reason": "freshness_capture_failed", "_failed": True}
+            try:
+                capture = self._run_capture()
+            except Exception:
+                return fail("freshness_capture_failed")
+            if capture.get("_failed"):
+                return fail("freshness_capture_failed")
+            try:
+                published = find_receipted_probes(
+                    self.storage, raw_prefix=self.config.storage.raw_prefix,
+                    schema=schema, row_key=1, markers=(marker,),
+                )
+            except Exception:
+                return fail("freshness_publication_invalid")
+            if set(published) != {marker}:
+                return fail("freshness_unpublished")
+            try:
+                now, _ = observe()
+                timestamp = published[marker].created_at
+                if (not isinstance(timestamp, datetime) or timestamp.tzinfo is None
+                        or timestamp.utcoffset() is None or timestamp < after or timestamp > now):
+                    return fail("freshness_clock_invalid")
+            except ValueError:
+                return fail("freshness_clock_invalid")
+            raw_values.append((timestamp - after).total_seconds())
+            self._last_freshness_raw = summarize(raw_values)
+            event_ids.append(published[marker].event_id)
+            try:
+                raw = self.warehouse.fetch_raw_evidence(schema=self.config.warehouse.schema_name)
+                self.warehouse.load(raw_prefix=self.config.storage.raw_prefix)
+            except Exception:
+                return fail("freshness_destination_failed", **({"raw_replay": raw.as_dict()} if raw else {}))
+            for poll in range(1, budget.max_polls + 1):
+                try:
+                    _, elapsed = observe()
+                except ValueError:
+                    return fail("freshness_clock_invalid")
+                remaining = budget.max_seconds - elapsed
+                try:
+                    value = self.warehouse.fetch_mirror_value(
+                        schema=self.config.warehouse.schema_name, row_key=1, column=LABEL,
+                        timeout_seconds=max(1, min(10, math.ceil(remaining))),
+                    )
+                except Exception:
+                    return fail("freshness_mirror_read_failed")
+                try:
+                    observed, elapsed = observe()
+                except ValueError:
+                    return fail("freshness_clock_invalid")
+                if value == marker:
+                    try:
+                        measured = observed_mirror_latency(before, observed, elapsed)
+                    except ValueError:
+                        return fail("freshness_clock_invalid")
+                    values.append(measured)
+                    probes.append({"marker": marker, "observed_upper_bound_seconds": measured, "poll_count": poll,
+                                   "written_before": before.isoformat(), "written_after": after.isoformat(),
+                                   "mirror_read_at": observed.isoformat(), "read_value": value})
+                    self._last_freshness = summarize(values)
+                    if measured > budget.max_seconds:
+                        return fail("freshness_mirror_slo_exceeded")
+                    break
+                if elapsed >= budget.max_seconds or poll == budget.max_polls:
+                    return fail("freshness_mirror_missing")
+                try:
+                    self._sleep(min(budget.poll_interval_seconds, budget.max_seconds - elapsed))
+                except Exception:
+                    return fail("freshness_poll_wait_failed")
         try:
-            published = find_receipted_probes(
-                self.storage, raw_prefix=self.config.storage.raw_prefix,
-                schema=schema, row_key=1, markers=markers,
-            )
+            self._last_reconciliation = self._reconcile(raw_evidence=raw)
         except Exception:
-            return {"reason": "freshness_publication_invalid", "_failed": True}
-        if set(published) != set(markers):
-            return {"reason": "freshness_unpublished", "_failed": True}
-        timestamps = [published[marker].created_at for marker in markers]
-        if any(
-            not isinstance(timestamp, datetime) or timestamp.tzinfo is None
-            or timestamp.utcoffset() is None or timestamp < write[1]
-            for write, timestamp in zip(writes, timestamps, strict=True)
-        ):
-            return {"reason": "freshness_clock_invalid", "_failed": True}
-        self._last_freshness = measure_freshness(writes, timestamps)
-
-        destination = self._run_reconcile()
-        if destination.get("_failed"):
-            return {
-                **destination,
-                "reason": "freshness_destination_differs" if self._last_reconciliation is not None
-                          else "freshness_destination_failed",
-                "_failed": True,
-            }
+            return fail("freshness_destination_failed")
+        if self._last_reconciliation.status != "PASS":
+            return fail("freshness_destination_differs")
+        accepted = len(values) == 3 and all(0 < value <= budget.max_seconds for value in values)
         return {
-            "samples": self._last_freshness.count,
-            "p95_seconds": self._last_freshness.p95,
-            "max_seconds": self._last_freshness.maximum,
-            "event_ids": [published[marker].event_id for marker in markers],
-            "raw_replay": destination["raw_replay"],
-            "_failed": False,
+            "samples": len(values), "p95_seconds": self._last_freshness.p95,
+            "max_seconds": self._last_freshness.maximum, "event_ids": event_ids,
+            "raw_replay": raw.as_dict(), "mirror_measurement": evidence(accepted),
+            "raw_latency": {"target": "durable_raw_object", "metric": "write_to_raw_object_lower_bound",
+                            "count": len(raw_values), "p95_seconds": self._last_freshness_raw.p95,
+                            "max_seconds": self._last_freshness_raw.maximum},
+            "_failed": not accepted,
         }
 
 

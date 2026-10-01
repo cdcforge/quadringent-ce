@@ -1013,7 +1013,10 @@ def _connector_kwargs(*, account: str, user: str, role: str, private_key_der: by
     }
 
 
-def _connect_snowflake(*, account: str, user: str, role: str, private_key_pem: str, warehouse: str) -> Any:
+def _connect_snowflake(*, account: str, user: str, role: str, private_key_pem: str, warehouse: str,
+                       timeout_seconds: int | None = None) -> Any:
+    if timeout_seconds is not None and (type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 10):
+        raise ValueError("Snowflake probe timeout must be within 1..10 seconds")
     import snowflake.connector  # import différé : jamais requis hors production/qualification
     from cryptography.hazmat.primitives import serialization
 
@@ -1022,6 +1025,10 @@ def _connect_snowflake(*, account: str, user: str, role: str, private_key_pem: s
         serialization.Encoding.DER, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()
     )
     kwargs = _connector_kwargs(account=account, user=user, role=role, private_key_der=der, warehouse=warehouse)
+    if timeout_seconds is not None:
+        # Options natives du connecteur ; ses retries empêchent une promesse
+        # de deadline murale stricte. La qualification contrôle aussi le temps observé.
+        kwargs.update(login_timeout=timeout_seconds, network_timeout=timeout_seconds, socket_timeout=timeout_seconds)
     return snowflake.connector.connect(**kwargs)
 
 

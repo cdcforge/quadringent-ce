@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 
 from .orchestrator import RunReport
 
@@ -11,7 +12,27 @@ _STATUS_LABEL = {"PASS": "réussie", "FAIL": "échouée", "SKIPPED": "ignorée"}
 
 def to_json(report: RunReport) -> str:
     """Rapport complet, sérialisé JSON (une différence par ligne, rien de résumé)."""
-    return json.dumps(report.as_dict(), indent=2, ensure_ascii=False, default=str) + "\n"
+    data = report.as_dict()
+    data["coverage"] = coverage(data)
+    return json.dumps(data, indent=2, ensure_ascii=False, default=str) + "\n"
+
+
+_REQUIRED_STEPS = ("seed", "snapshot", "capture", "reconcile", "freshness", "changes1", "changes2", "rotate", "changes3")
+
+
+def coverage(data: dict[str, object]) -> dict[str, object]:
+    """Couverture conservatrice ; un PASS d'étape ne certifie pas le produit."""
+    passed = {step["name"] for step in data["steps"] if step["status"] == "PASS"}
+    return {
+        "selected_steps_status": data["status"],
+        "execution_mode": data.get("execution_mode", "unknown"),
+        "required_steps": list(_REQUIRED_STEPS),
+        "missing_required_steps": [name for name in _REQUIRED_STEPS if name not in passed],
+        "complete_product_status": "NOT_VALIDATED",
+        "fault_injection": "not_validated",
+        "native_observability": "not_validated",
+        "platforms": {name: "not_validated" for name in ("GKE", "EKS", "VM")},
+    }
 
 
 def _step_line(step: dict[str, object]) -> str:
@@ -38,7 +59,7 @@ def render_markdown(data: dict[str, object]) -> str:
     lines = [
         f"# Rapport de qualification — {data['run_id']}",
         "",
-        f"**Statut global : {data['status']} ({_STATUS_LABEL.get(data['status'], data['status'])})**",
+        f"**Statut des étapes sélectionnées : {data['status']} ({_STATUS_LABEL.get(data['status'], data['status'])})**",
         "",
         "Provenance : " + {
             "offline_fake": "simulé — adaptateurs en mémoire ; aucune qualification externe.",
@@ -49,6 +70,16 @@ def render_markdown(data: dict[str, object]) -> str:
         "",
         "| Étape | Statut | Détails |",
         "|---|---|---|",
+    ]
+    covered = coverage(data)
+    lines[8:8] = [
+        "## Couverture", "",
+        "Qualification produit complète : NOT_VALIDATED.",
+        f"Mode : {covered['execution_mode']}.",
+        "Étapes requises absentes ou non réussies : " + (", ".join(covered["missing_required_steps"]) or "aucune"),
+        "Panne injectée : non validée ; observabilité native : non validée.",
+        "Qualification GKE / EKS / VM : non validée.",
+        "Un diagnostic partiel ou simulé ne constitue pas une qualification produit complète.", "",
     ]
     lines += [_step_line(s) for s in data["steps"]]
     lines.append("")
@@ -130,14 +161,65 @@ def render_markdown(data: dict[str, object]) -> str:
                              f"{len(d['value_differences'])} différence(s) de valeur")
         lines.append("")
 
-    lines.append("## Latence")
+    lines.append("## Latence écriture → lot brut")
     lines.append("")
-    freshness = data.get("freshness")
+    freshness = data.get("freshness_raw")
+    if freshness is None and not any(
+        step["details"].get("mirror_measurement") for step in data["steps"]
+    ):
+        freshness = data.get("freshness")
     if freshness is None or freshness.get("count", 0) == 0:
         lines.append("Aucune mesure de fraîcheur pour ce run.")
     else:
         lines.append(f"- p50 : {freshness['p50']} s ; p95 : {freshness['p95']} s ; max : {freshness['max']} s "
                       f"(n={freshness['count']})")
+    lines.append("")
+
+    measurement = next((step["details"].get("mirror_measurement") for step in data["steps"]
+                        if step["name"] == "freshness"), None)
+    verdict = "unknown"
+    if isinstance(measurement, dict) and data.get("execution_mode") in ("real", "offline_fake"):
+        numbers = [measurement.get(name) for name in ("p95_seconds", "max_seconds", "slo_seconds")]
+        valid = (measurement.get("target") == "snowflake_mirror"
+                 and measurement.get("metric") == "write_to_mirror_observed_upper_bound"
+                 and measurement.get("count") == 3
+                 and all(isinstance(n, (int, float)) and not isinstance(n, bool)
+                         and math.isfinite(n) and n >= 0 for n in numbers))
+        probes = measurement.get("probes")
+        probes_valid = isinstance(probes, list) and len(probes) == 3
+        values = []
+        markers = set()
+        if probes_valid:
+            for probe in probes:
+                if not isinstance(probe, dict):
+                    probes_valid = False
+                    break
+                marker = probe.get("marker")
+                value = probe.get("observed_upper_bound_seconds")
+                polls = probe.get("poll_count")
+                if (not isinstance(marker, str) or not marker.strip() or marker in markers
+                        or not isinstance(value, (int, float)) or isinstance(value, bool)
+                        or not math.isfinite(value) or value <= 0
+                        or type(polls) is not int or not 1 <= polls <= 40):
+                    probes_valid = False
+                    break
+                markers.add(marker)
+                values.append(value)
+        valid = (valid and probes_valid
+                 and measurement.get("scope") == "sql_loader_bounded_docker_capture"
+                 and measurement.get("steady_state_streaming") is False
+                 and numbers[2] > 0
+                 and numbers[0] == numbers[1] == max(values, default=-1))
+        if valid:
+            verdict = ("PASS" if measurement.get("status") == "PASS"
+                       and measurement.get("accepted") is True
+                       and numbers[1] <= numbers[2] and numbers[2] > 0 else "FAIL")
+        elif measurement.get("status") == "FAIL":
+            verdict = "FAIL"
+    simulation = " (simulation)" if data.get("execution_mode") == "offline_fake" else ""
+    lines.append(f"Fraîcheur du miroir : {verdict}{simulation} — mesure bornée, pas du streaming permanent.")
+    if measurement is not None:
+        lines.append("Mesure déclarée : " + json.dumps(measurement, ensure_ascii=False))
     lines.append("")
 
     lines.append("## Coûts")

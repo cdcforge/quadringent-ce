@@ -40,3 +40,24 @@ def test_summarize_basic():
     assert result.p50 == 2.0
     assert result.maximum == 3.0
     assert result.mean == 2.0
+
+
+def test_borne_miroir_refuse_zero_et_saut_horloge():
+    from datetime import datetime, timedelta, timezone
+    import pytest
+    from quadringent_qualification.latency import observed_mirror_latency
+
+    start = datetime(2026, 10, 2, tzinfo=timezone.utc)
+    assert observed_mirror_latency(start, start + timedelta(seconds=2), 2.1) == 2.1
+    for end, elapsed in ((start, 0), (start + timedelta(seconds=2), 10),
+                         (start - timedelta(seconds=1), 1), (start, float('nan'))):
+        with pytest.raises(ValueError):
+            observed_mirror_latency(start, end, elapsed)
+
+
+def test_depassement_sous_microseconde_ne_s_arrondit_pas_en_succes():
+    from datetime import datetime, timedelta, timezone
+    from quadringent_qualification.latency import observed_mirror_latency
+
+    start = datetime(2026, 10, 2, tzinfo=timezone.utc)
+    assert observed_mirror_latency(start, start + timedelta(seconds=10), 10.0000004) > 10

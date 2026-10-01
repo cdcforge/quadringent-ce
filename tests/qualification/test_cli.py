@@ -146,3 +146,13 @@ def test_cli_report_writes_to_out_markdown_file(tmp_path):
     code = cli.main(["report", "--run-json", str(report_path), "--out-markdown", str(out_md)])
     assert code == 1
     assert "qual-cli-test" in out_md.read_text()
+
+
+def test_cli_partial_success_names_selected_scope(tmp_path, capsys):
+    config_path = tmp_path / 'run.json'
+    config_path.write_text(CONFIG)
+    assert cli.main(['run', '--config', str(config_path), '--out-dir', str(tmp_path / 'out'),
+                     '--offline-fake']) == 0
+    output = capsys.readouterr().out
+    assert 'étapes sélectionnées : PASS' in output
+    assert 'qualification produit complète : NOT_VALIDATED' in output

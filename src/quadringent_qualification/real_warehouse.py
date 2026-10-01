@@ -158,12 +158,13 @@ class SnowflakeQualificationWarehouse:
         self._loader = loader
 
     @contextmanager
-    def _cursor(self) -> Iterator[Any]:
+    def _cursor(self, *, timeout_seconds: int | None = None) -> Iterator[Any]:
         try:
             connection = self._connect(
                 account=self._credential.account, user=self._credential.user,
                 role=self._credential.role, private_key_pem=self._credential.private_key_pem,
                 warehouse=self._warehouse,
+                **({"timeout_seconds": timeout_seconds} if timeout_seconds is not None else {}),
             )
         except Exception:
             raise RuntimeError("Snowflake qualification connection failed") from None
@@ -272,6 +273,23 @@ class SnowflakeQualificationWarehouse:
                         observe(event)
         return RawReplayEvidence(raw_rows, len(first_content), identical, divergent,
                                  tuple(sorted(identical_ids)), tuple(sorted(divergent_ids)))
+
+    def fetch_mirror_value(self, *, schema: str, row_key: int, column: str,
+                           timeout_seconds: int) -> Any | None:
+        self._require_schema(schema)
+        if (type(row_key) is not int or column not in self._config.table.column_names
+                or type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 10):
+            raise ValueError("qualification mirror probe selector or timeout is invalid")
+        with self._cursor(timeout_seconds=timeout_seconds) as cursor:
+            cursor.execute(f"ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = {timeout_seconds}")
+            cursor.execute(
+                f"SELECT {column} FROM {self.plan.qualified_mirror_table} "
+                f"WHERE {self._config.table.primary_key} = %s LIMIT 2", (row_key,),
+            )
+            rows = cursor.fetchall()
+        if len(rows) > 1 or any(len(row) != 1 for row in rows):
+            raise ValueError("qualification mirror probe is ambiguous")
+        return rows[0][0] if rows else None
 
     def fetch_mirror_rows(self, *, schema: str) -> Sequence[Mapping[str, Any]]:
         self._require_schema(schema)

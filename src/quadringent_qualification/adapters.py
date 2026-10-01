@@ -210,6 +210,11 @@ class WarehouseLoader(Protocol):
         """Mesure identités et contenus des événements des lots bruts validés."""
         ...
 
+    def fetch_mirror_value(self, *, schema: str, row_key: int, column: str,
+                           timeout_seconds: int) -> Any | None:
+        """SELECT indépendant et borné de la valeur miroir, sans cache ni oracle."""
+        ...
+
     def fetch_mirror_rows(self, *, schema: str) -> Sequence[Mapping[str, Any]]:
         """Relit les lignes du miroir réel, sans masquer les clés dupliquées."""
         ...

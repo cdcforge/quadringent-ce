@@ -577,7 +577,8 @@ def test_unmeasured_freshness_cannot_pass_a_nightly_run():
 
 def _freshness_orchestrator(monkeypatch, *, published=3, capture_exit=0):
     base = datetime(2026, 9, 29, 12, 0, tzinfo=timezone.utc)
-    ticks = iter(base + timedelta(seconds=index) for index in range(6))
+    timing = SimpleNamespace(seconds=0.0)
+    publication_count = 0
     source = FakeSourceDriver(rows={1: generated_row(1)}, primary_key="ORDER_ID")
     capture = FakeCaptureRunner(exit_code=capture_exit)
     warehouse = FakeWarehouseLoader()
@@ -585,18 +586,28 @@ def _freshness_orchestrator(monkeypatch, *, published=3, capture_exit=0):
     orch.oracle[1] = generated_row(1)
     orch._capture_bootstrap = CaptureBoundary("QUALIF_LIB", "R1", 1, base)
     orch._last_reconciliation = SimpleNamespace(status="PASS", as_dict=lambda: {"status": "PASS"})
-    orch._clock = lambda: next(ticks)
+    def clock():
+        observed = base + timedelta(seconds=timing.seconds)
+        timing.seconds += 0.1
+        return observed
+
+    orch._clock = clock
+    orch._monotonic = lambda: timing.seconds - 0.1
+    orch._sleep = lambda duration: setattr(timing, "seconds", timing.seconds + duration)
+    warehouse.fetch_mirror_value = lambda **kwargs: source.rows[1]["LABEL"]
 
     def publications(_storage, *, raw_prefix, schema, row_key, markers):
+        nonlocal publication_count
+        publication_count += 1
         assert raw_prefix == orch.config.storage.raw_prefix
         assert schema == SCHEMA and row_key == 1
-        assert len(markers) == 3 and len(set(markers)) == 3
+        assert len(markers) == 1
         return {
             marker: PublishedProbe(
-                event_id=f"event-{index}", object_key=f"raw-{index}",
-                created_at=base + timedelta(seconds=10 + index * 2),
+                event_id=f"event-{publication_count}", object_key=f"raw-{publication_count}",
+                created_at=base + timedelta(seconds=timing.seconds - 0.1),
             )
-            for index, marker in enumerate(markers[:published])
+            for marker in markers if publication_count <= published
         }
 
     monkeypatch.setattr("quadringent_qualification.orchestrator.find_receipted_probes", publications)
@@ -611,9 +622,9 @@ def test_freshness_links_three_isolated_writes_to_raw_and_reconciles_again(monke
     report = orch.run(("freshness",))
     assert report.status == "PASS"
     assert report.freshness is not None and report.freshness.count == 3
-    assert report.freshness.maximum == 9.0
-    assert len(capture.calls) == 1 and capture.calls[0]["label"] == "capture-1"
-    assert warehouse.load_calls == [orch.config.storage.raw_prefix]
+    assert report.freshness.maximum == pytest.approx(0.5)
+    assert [call["label"] for call in capture.calls] == ["capture-1", "capture-2", "capture-3"]
+    assert warehouse.load_calls == [orch.config.storage.raw_prefix] * 3
     assert source.rows[1]["LABEL"] == orch.oracle[1]["LABEL"]
     assert source.last_sequence == 3
     assert report.steps[0].details["samples"] == 3
@@ -632,7 +643,7 @@ def test_freshness_rejects_missing_proof_or_failed_capture(
     report = orch.run(("freshness",))
     assert report.status == "FAIL"
     assert report.steps[0].details["reason"] == reason
-    assert warehouse.load_calls == []
+    assert len(warehouse.load_calls) == (2 if published == 2 and capture_exit == 0 else 0)
 
 
 def test_freshness_cannot_keep_a_stale_reconciliation_after_source_error(monkeypatch):
@@ -653,7 +664,7 @@ def test_freshness_fails_when_final_destination_differs(monkeypatch):
     assert report.status == "FAIL"
     assert report.steps[0].details["reason"] == "freshness_destination_differs"
     assert report.freshness is not None and report.freshness.count == 3
-    assert warehouse.load_calls == [orch.config.storage.raw_prefix]
+    assert warehouse.load_calls == [orch.config.storage.raw_prefix] * 3
 
 
 def test_freshness_loader_failure_keeps_the_new_raw_conflict_proof(monkeypatch):
