@@ -77,7 +77,7 @@ def test_community_publication_targets_only_the_fresh_runtime_package(tmp_path, 
         capture_output=True, text=True,
     )
     assert result.returncode == 0, result.stderr
-    repository = f"ghcr.io/{owner.lower()}/quadringent-community-runtime"
+    repository = f"ghcr.io/{owner.lower()}/quadringent-ce-runtime"
     assert environment_file.read_text().splitlines() == [f"IMAGE={repository}"]
     assert output_file.read_text().splitlines() == [f"image={repository}"]
     # Les builds, promotions, signatures et manifestes consomment cette destination.

@@ -86,9 +86,9 @@ déduire le plafond d'une faible utilisation.
 ## Durées observées et coût indicatif
 
 Lectures GET des jobs le 30 septembre 2026. Le run
-[main 36722990396](https://github.com/cdcforge/quadringent-community/actions/runs/36722990396)
+`main 36722990396` (mesure historique)
 est une baseline complète réussie ; le run
-[PR 36733461982](https://github.com/cdcforge/quadringent-community/actions/runs/36733461982)
+`PR 36733461982` (mesure historique)
 a échoué pendant la suite Python et n'a pas exécuté ses étapes suivantes.
 Les colonnes montrent la durée entre `started_at` et `completed_at`, hors file
 d'attente, puis l'arrondi supérieur par job utilisé pour l'estimation.
@@ -139,7 +139,7 @@ les minutes déjà consommées.
 ### Première observation avec les caches
 
 Le 30 septembre 2026, la lecture GET des jobs de la
-[PR 36743453173](https://github.com/cdcforge/quadringent-community/actions/runs/36743453173)
+`PR 36743453173` (mesure historique)
 confirme **sept succès**. Durées en secondes (minutes arrondies) : `tests`
 654 (11), capture 113 (2), verifier 48 (1), cockpit 121 (3), Java 37 (1),
 chart 9 (1), gate produit 32 (1). Somme : **1 014 s → 20 minutes**, soit
@@ -153,7 +153,7 @@ signalé un cache Maven sans chemin existant : ce cache est retiré du seul job
 `tests`, tout en conservant le JDK et le cache Maven du job `java`.
 
 Après sa fin, la lecture GET unique des sept jobs du
-[main 36744902680](https://github.com/cdcforge/quadringent-community/actions/runs/36744902680),
+`main 36744902680` (mesure historique),
 commit `43e1e97`, confirme sept succès. Durées en secondes (minutes arrondies) :
 `tests` 359 (6), capture 134 (3), verifier 83 (2), cockpit 141 (3), Java 41 (1),
 chart 11 (1), gate produit 38 (1). Le step de suite Python couvre 232 s et

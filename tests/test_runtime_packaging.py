@@ -472,7 +472,7 @@ class RuntimePackagingTests(unittest.TestCase):
         self.assertIn("docker/control-plane.Dockerfile", workflow)
         self.assertIn("docker/verifier.Dockerfile", workflow)
         self.assertIn("linux/amd64,linux/arm64", workflow)
-        self.assertIn('image="ghcr.io/$owner/quadringent-community-runtime"', workflow)
+        self.assertIn('image="ghcr.io/$owner/quadringent-ce-runtime"', workflow)
         self.assertNotIn('image="ghcr.io/$owner/quadringent-community"', workflow)
         self.assertEqual(workflow.count("org.opencontainers.image.source=https://github.com/${{ github.repository }}"), 3)
         self.assertIn('DOCKER_BUILD_RECORD_UPLOAD: "false"', workflow)

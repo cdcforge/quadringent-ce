@@ -9,35 +9,19 @@ référence pour un site qui gère lui-même sa chart Helm.
 Pour les sauvegardes PostgreSQL, la restauration isolée et le retour de version,
 voir [Sauvegarder, restaurer et revenir à une version précédente](backup-restore.md).
 
-**Statut** : installation réelle qualifiée sur GKE DEV, EKS DEV temporaire,
-VM AWS temporaire et VM GCP temporaire. EKS et VM AWS ont été installés
-depuis le wheel, le sdist, la chart et les images construits depuis un même
-arbre source. Ces deux installations ont servi l'API et accédé à S3 et
-DynamoDB avec leur identité cloud. Sur EKS, l'activation dans le navigateur, les décisions de
-confirmation, une sauvegarde/restauration PostgreSQL en base séparée,
-l'upgrade Helm et le rollback ont été vérifiés. Les ressources de test AWS
-ont ensuite été supprimées. Sur VM GCP, le wheel et le sdist corrigés ont
-installé le control plane sur k3s via SSH IAP ; API et UI ont répondu HTTP 200,
-PostgreSQL était prêt, le compte de service attaché a listé le bucket GCS,
-et aucun accès public à la VM n'était configuré. Les images testées
-provenaient du commit précédent le correctif Terraform ; leurs couches
-applicatives sont identiques à celles reconstruites après ce correctif, mais
-le futur lot de release exact reste à installer. Aucune recopie IBM i →
-Snowflake n'a été exécutée sur EKS ou VM. La connexion IBM i elle-même
-(assistant en trois écrans du design produit fini §2) n'est pas dans le
-périmètre de ce chantier : l'installateur laisse le site dans un état
-« control plane actif, aucune source connectée », prêt pour cet assistant.
+**Statut de la version 0.2.4** : candidat DEV en préparation. Les preuves
+sur des versions précédentes couvrent des installations du control plane sur
+GKE, EKS, VM AWS et VM GCP ; elles ne constituent pas une qualification du
+nouveau lot. L'installation, la sauvegarde/restauration et le retour de
+version doivent être vérifiés avec les artefacts exacts de la release sur
+chaque cible annoncée.
 
-Le parcours IBM i → GCS → Snowflake et le miroir exact sont qualifiés sur
-GKE DEV avec des données synthétiques, pas sur EKS ni sur VM. Les trois
-derniers événements à chaud en mode historique SQL ont pris 6,54 s,
-7,92 s et 8,56 s entre l'acquittement IBM i et le miroir ; le dernier a
-pris 11,36 s depuis le début de l'écriture IBM i. Deux essais à froid ont
-pris plus de 12 s après acquittement. Le maximum de 10 s n'est donc pas
-établi. Les essais EKS et VM couvrent l'installation, l'accès privé, la mise à jour ou le
-retrait selon la cible ; ils ne prouvent pas la continuité CDC sur ces
-deux environnements. Arrêter ou supprimer les ressources de test après la
-qualification pour éviter une facturation inutile.
+La qualification du control plane est distincte de celle du parcours IBM i →
+Snowflake. Un pod prêt, une API accessible ou une capture active ne prouvent
+pas la relecture du miroir ni la continuité CDC. Aucun maximum de latence de
+10 s ni qualification PROD n'est annoncé pour ce candidat. Les essais
+utilisent des données synthétiques et les ressources temporaires sont
+supprimées après qualification.
 
 ### Installation depuis les artefacts de release
 
@@ -209,7 +193,7 @@ quadringent uninstall --name demo-int
 Après une release, télécharger `release-manifest.json` joint à la release
 brouillon validée, puis le passer à `--release-manifest`. Ce fichier contient
 les trois digests publiés et le dépôt OCI. La release communautaire cible
-`ghcr.io/<owner>/quadringent-community-runtime` ; utiliser l’URL exacte du
+`ghcr.io/<owner>/quadringent-ce-runtime` ; utiliser l’URL exacte du
 manifeste. `--image-repository` permet de
 pointer vers un miroir privé qui conserve ces digests. Le gabarit
 `deploy/release-manifest.example.json` contient des digests fictifs et ne

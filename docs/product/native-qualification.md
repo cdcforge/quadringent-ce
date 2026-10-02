@@ -28,7 +28,7 @@ faite **avant expiration**, sans prolongation implicite.
 {
   "release": {
     "mode": "fresh",
-    "repository": "cdcforge/quadringent-community",
+    "repository": "example-org/quadringent",
     "visibility": "private",
     "run_id": 123,
     "attempt": 1,

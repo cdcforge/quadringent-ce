@@ -99,7 +99,7 @@ jobs:
         id: registry
         run: |
           owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
-          image="ghcr.io/$owner/quadringent-community-runtime"
+          image="ghcr.io/$owner/quadringent-ce-runtime"
           echo "IMAGE=$image" >> "$GITHUB_ENV"
           echo "image=$image" >> "$GITHUB_OUTPUT"
 

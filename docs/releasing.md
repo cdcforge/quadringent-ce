@@ -120,9 +120,8 @@ version et appVersion sans préfixe `v`, puis attache chart, wheel, sdist,
 la visibilité des packages GHCR : la confidentialité du dépôt ne suffit pas
 à corriger celle d’un package préexistant.
 Les images de l'édition communautaire sont publiées sous
-`ghcr.io/<owner>/quadringent-community-runtime` ; le manifeste de release fixe
-l'URL réelle et les trois digests à utiliser. Ce package est distinct du package
-historique `quadringent-community`, qui reste privé et hors de ce workflow.
+`ghcr.io/<owner>/quadringent-ce-runtime` ; le manifeste de release fixe
+l'URL réelle et les trois digests à utiliser. Le package retenu doit être neuf, sans version héritée d'un dépôt privé.
 Avant la première publication, vérifier que le nouveau nom n’existe pas déjà
 dans GHCR. Sa création utilise le `GITHUB_TOKEN` du dépôt communautaire qui
 exécute le workflow ; les droits de l’ancien package ne sont pas réutilisés.
