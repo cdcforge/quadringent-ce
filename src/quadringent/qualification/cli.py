@@ -14,10 +14,10 @@ import sys
 import time
 import uuid
 
-from . import collect, proof, release_admission as admission
+from . import actions, collect, proof, release_admission as admission
 
-PHASES = ('admit-release','oracle','baseline','snapshot','observe','positions','pause','resume','bind-mutations','evaluate')
-REFS = {'before','after','history_oracle','baseline','receipt','ack_receipts','pause_proof','resume_proof','mutation_receipts','observations','observation_receipts'}
+PHASES = ('admit-release','oracle','baseline','snapshot','observe','positions','pause','resume','bind-mutations','evaluate','crash','bind-crash-mutations','evaluate-crash')
+REFS = {'crash_proof','before','after','history_oracle','baseline','receipt','ack_receipts','pause_proof','resume_proof','mutation_receipts','observations','observation_receipts'}
 
 
 def sha(path):
@@ -40,8 +40,11 @@ def private_dir(path):
 
 
 def validate_actions(value):
-    if not isinstance(value,dict) or set(value)-{'enabled','environment','api_config'}:
+    if not isinstance(value,dict) or set(value)-{'enabled','environment','api_config','crash_reader'}:
         raise ValueError('actions non prises en charge')
+    if value.get('crash_reader') is True:
+        actions.validate_crash_actions(value)
+        if 'api_config' not in value:return None
     if value.get('enabled',False) is False:return None
     if value.get('enabled') is not True or value.get('environment') != 'dev' or not isinstance(value.get('api_config'),str):
         raise ValueError('actions natives exigent activation explicite DEV')
@@ -265,6 +268,18 @@ def run_native(config,out_dir,phase,*,stdout=None):
             before=read('before');collect.scope_matches(before,args)
             reader=probe.workload(args.reader_deployment,args.capture_digest)
             report={**probe.source_positions(reader,before),**{k:getattr(args,k) for k in collect.SCOPE},'observed_utc':proof.utc()}
+        elif phase=='crash':
+            before=read('before');collect.scope_matches(before,args)
+            request,injection=actions.inject_reader_crash(probe,before,data.get('actions',{}),
+                on_request=lambda event:proof.write_private(out/'crash.action-request.json',event))
+            proof.write_private(out/'crash.action.json',{'request':request,'injection':injection})
+            while True:
+                try:report=probe.crash_state(before,request,injection);break
+                except (ValueError,RuntimeError):
+                    if time.monotonic()+args.poll_seconds>=probe.deadline:raise
+                    time.sleep(args.poll_seconds)
+        elif phase=='bind-crash-mutations':
+            report=collect.bind_crash_mutation_receipts(*(read(k) for k in ('ack_receipts','history_oracle','crash_proof','before')),args)
         elif phase in {'pause','resume'}:
             before=read('before');collect.scope_matches(before,args)
             # Valide le candidat initial AVANT toute action ; reprise autorisée uniquement depuis une pause réellement observée.
@@ -293,11 +308,16 @@ def run_native(config,out_dir,phase,*,stdout=None):
             # L'identité et le candidat exécutés sont réobservés ; aucune ressource supplémentaire n'est créée.
             for deployment,digest,key in ((args.reader_deployment,args.capture_digest,'reader'),(args.loader_deployment,args.loader_digest,'loader')):
                 current=probe.workload(deployment,digest)[0]
+                if phase=='evaluate-crash' and key=='reader' and actions.reader_incarnation(current)!=actions.reader_incarnation(after[key]):
+                    raise ValueError('incarnation ou unicité lecteur changée après crash')
                 if proof.workload_candidate(current,current['container'])!=proof.workload_candidate(after[key],current['container']):
                     raise ValueError('candidat courant différent du snapshot')
-            report=evaluate(before,after,{key:read(ref) for key,ref in (('pause','pause_proof'),('resume','resume_proof'),('mutations','mutation_receipts'))},
-                            [private_json(path) for path in refs['observations']],[Path(path) for path in refs['observation_receipts']],
-                            refs['baseline'],expected_history_mode=args.expected_history_mode)
+            if phase=='evaluate-crash':
+                report=proof.evaluate_crash(before,after,{'crash':read('crash_proof'),'mutations':read('mutation_receipts')})
+            else:
+                report=evaluate(before,after,{key:read(ref) for key,ref in (('pause','pause_proof'),('resume','resume_proof'),('mutations','mutation_receipts'))},
+                                [private_json(path) for path in refs['observations']],[Path(path) for path in refs['observation_receipts']],
+                                refs['baseline'],expected_history_mode=args.expected_history_mode)
         proof.write_private(target,report)
         failed=isinstance(report,dict) and (report.get('snapshot_checks_passed') is False or report.get('status') in {'timeout','INCOMPLETE'} or report.get('observed_threshold_met') is False)
         print(json.dumps({'status':'INCOMPLETE' if failed else 'recorded','phase':phase,'proof':str(target.resolve()),

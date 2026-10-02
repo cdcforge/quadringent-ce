@@ -155,6 +155,20 @@ def bind_mutation_receipts(acks,oracle,pause,resume,before,args):
             pause.get('reader',{}).get('deployment_absent') is not True or pause['reader'].get('owned_pods')!=[] or
             resume.get('kind')!='native-reader-resume-proof' or resume.get('reader',{}).get('ready_replicas')!=1):
         raise ValueError('contexte oracle/pause/reprise incomplet')
+    return _bind_mutations(acks,oracle,before,args,pause['observed_utc'],resume['observed_utc'])
+
+
+def bind_crash_mutation_receipts(acks,oracle,crash,before,args):
+    for item in (oracle,crash,before):scope_matches(item,args)
+    if (oracle.get('kind')!='ibmi-journal-and-snapshot-oracle' or oracle.get('independent_of_snowflake') is not True or
+            oracle.get('copy_run_id')!=args.copy_run_id or oracle.get('copy_boundary')!=args.copy_boundary or
+            before.get('snapshot_checks_passed') is not True):
+        raise ValueError('oracle crash indépendant incomplet')
+    lower,upper=n.validate_crash_replacement(before,{**before,'reader':crash['reader'],'observed_utc':crash['observed_utc']},crash)
+    return _bind_mutations(acks,oracle,before,args,lower.isoformat(),upper.isoformat())
+
+
+def _bind_mutations(acks,oracle,before,args,lower,upper):
     if not isinstance(acks,list) or not 1<=len(acks)<=20:raise ValueError('ACK mutations absents')
     columns=args.columns if isinstance(args.columns,dict) else json.loads(Path(args.columns).read_text())
     events=oracle['events'];n.history_proof(events,events)
@@ -163,7 +177,7 @@ def bind_mutation_receipts(acks,oracle,pause,resume,before,args):
     for ack in acks:
         scope_matches(ack,args)
         start,end=n.validate_receipt(ack,before['observed_utc'])
-        if (not n.stamp(pause['observed_utc'])<=start<=end<n.stamp(resume['observed_utc']) or
+        if (not n.stamp(lower)<=start<=end<n.stamp(upper) or
                 type(ack.get('affected_rows')) is not int or ack['affected_rows']!=1 or 'expected_events' in ack):
             raise ValueError('ACK réel pendant pause absent ou images déclarées refusées')
         positions=ack.get('source_positions');shape={'insert':['c'],'update':['u_before','u_after'],'delete':['d']}.get(ack.get('operation'))

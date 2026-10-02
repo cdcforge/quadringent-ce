@@ -6,6 +6,9 @@ Ce guide décrit `quadringent install --cloud aws|gcp --target vm|cluster`
 complète le [guide expert](install-client.md), qui reste la voie de
 référence pour un site qui gère lui-même sa chart Helm.
 
+Pour les sauvegardes PostgreSQL, la restauration isolée et le retour de version,
+voir [Sauvegarder, restaurer et revenir à une version précédente](backup-restore.md).
+
 **Statut** : installation réelle qualifiée sur GKE DEV, EKS DEV temporaire,
 VM AWS temporaire et VM GCP temporaire. EKS et VM AWS ont été installés
 depuis le wheel, le sdist, la chart et les images construits depuis un même

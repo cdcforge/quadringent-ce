@@ -48,7 +48,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 RUN apt-get update \
     && apt-get upgrade --yes \
-    && apt-get install --no-install-recommends --yes ca-certificates libpcre2-8-0 \
+    && apt-get install --no-install-recommends --yes ca-certificates libpcre2-8-0 tini \
+    && test -s /usr/share/doc/tini/copyright \
     && python -m venv /opt/venv \
     && rm -rf /var/lib/apt/lists/*
 
@@ -136,4 +137,4 @@ COPY scripts/quadringent_table_discovery_job.py /app/
 RUN useradd --create-home --uid 10001 capture && chown -R capture /app
 USER 10001
 
-ENTRYPOINT ["/opt/venv/bin/python", "/app/as400_continuous_capture.py"]
+ENTRYPOINT ["/usr/bin/tini", "-g", "--", "/opt/venv/bin/python", "/app/as400_continuous_capture.py"]

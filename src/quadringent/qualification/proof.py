@@ -6,7 +6,7 @@ Les connexions sont ouvertes dans les pods avec leur identité existante.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import hashlib
 
@@ -237,7 +237,7 @@ def reader_reference(proof):
     return name,selector,uid
 
 
-def evaluate_resume(before,after,order,operations):
+def _evaluate_recovery(before,after,order,operations,*,crash=False):
     if not all(item.get("snapshot_checks_passed") is True and item.get("checkpoint")
                and item.get("history_validation",{}).get("equal") is True
                and item.get("reconciliation",{}).get("equal") is True
@@ -249,39 +249,46 @@ def evaluate_resume(before,after,order,operations):
     resume=resume_evidence(before["checkpoint"],after["checkpoint"],None)
     if resume["status"] != "PASS" or not resume["changed"]:
         raise ValueError("progression de reprise non prouvée")
-    if not operations or not all(operations.get(k) for k in ('pause','resume','mutations')):
-        raise ValueError('preuves pause/reprise/mutations manquantes')
-    pause,ready=operations['pause'],operations['resume']
-    mutations=operations['mutations']
-    if not isinstance(mutations,list) or not 1<=len(mutations)<=20:
-        raise ValueError('budget mutations invalide')
-    for item in (after,pause,ready,*mutations):
-        if any(item.get(k)!=before.get(k) or before.get(k) is None for k in ('pipeline','table','table_id','namespace','context')):
-            raise ValueError('preuve hors périmètre')
-    if (pause.get('kind')!='native-reader-pause-proof' or ready.get('kind')!='native-reader-resume-proof' or
-            pause['reader'].get('deployment_absent') is not True or
-            any(k in pause['reader'] for k in ('uid','pod_uid','desired_replicas','ready_replicas')) or
-            pause['reader'].get('owned_pods')!=[] or ready['reader'].get('desired_replicas')!=1 or
-            ready['reader'].get('ready_replicas')!=1 or ready['reader'].get('identity_effective',{}).get('verified') is not True):
-        raise ValueError('pause ou reprise native non prouvée')
-    name,selector,uid=reader_reference(before['reader'])
-    after_name,after_selector,after_uid=reader_reference(after['reader'])
-    ready_name,ready_selector,ready_uid=reader_reference(ready['reader'])
-    if (pause['reader'].get('deployment')!=name or pause['reader'].get('selector')!=selector or
-            (after_name,after_selector)!=(name,selector) or (ready_name,ready_selector)!=(name,selector) or
-            after_uid!=ready_uid or after_uid==uid or
-            ready['reader'].get('pod_uid')!=after['reader'].get('pod_uid') or
-            not after['reader'].get('pod_uid') or not before['reader'].get('pod_uid') or
-            after['reader'].get('pod_uid')==before['reader'].get('pod_uid')):
-        raise ValueError('UID lecteur ou pod de reprise invalide')
-    candidate=workload_candidate(before['reader'],'reader')
-    if any(workload_candidate(item['reader'],'reader')!=candidate for item in (ready,after)):
-        raise ValueError('candidat lecteur ou identité changés pendant reprise')
-    if workload_candidate(before['loader'],'destination-loader')!=workload_candidate(after['loader'],'destination-loader'):
-        raise ValueError('candidat chargeur ou identité changés pendant reprise')
-    paused_at,resumed_at=stamp(pause['observed_utc']),stamp(ready['observed_utc'])
-    if not stamp(before['observed_utc'])<=paused_at<resumed_at<=stamp(after['observed_utc']):
-        raise ValueError('chronologie reprise incohérente')
+    if crash:
+        paused_at,resumed_at=validate_crash_replacement(before,after,operations['crash'])
+        mutations=operations.get('mutations')
+        if not isinstance(mutations,list) or not 1<=len(mutations)<=20:raise ValueError('budget mutations invalide')
+        for item in (after,*mutations):
+            if any(item.get(k)!=before.get(k) for k in ('pipeline','table','table_id','namespace','context')):raise ValueError('preuve hors périmètre')
+    else:
+        if not operations or not all(operations.get(k) for k in ('pause','resume','mutations')):
+            raise ValueError('preuves pause/reprise/mutations manquantes')
+        pause,ready=operations['pause'],operations['resume']
+        mutations=operations['mutations']
+        if not isinstance(mutations,list) or not 1<=len(mutations)<=20:
+            raise ValueError('budget mutations invalide')
+        for item in (after,pause,ready,*mutations):
+            if any(item.get(k)!=before.get(k) or before.get(k) is None for k in ('pipeline','table','table_id','namespace','context')):
+                raise ValueError('preuve hors périmètre')
+        if (pause.get('kind')!='native-reader-pause-proof' or ready.get('kind')!='native-reader-resume-proof' or
+                pause['reader'].get('deployment_absent') is not True or
+                any(k in pause['reader'] for k in ('uid','pod_uid','desired_replicas','ready_replicas')) or
+                pause['reader'].get('owned_pods')!=[] or ready['reader'].get('desired_replicas')!=1 or
+                ready['reader'].get('ready_replicas')!=1 or ready['reader'].get('identity_effective',{}).get('verified') is not True):
+            raise ValueError('pause ou reprise native non prouvée')
+        name,selector,uid=reader_reference(before['reader'])
+        after_name,after_selector,after_uid=reader_reference(after['reader'])
+        ready_name,ready_selector,ready_uid=reader_reference(ready['reader'])
+        if (pause['reader'].get('deployment')!=name or pause['reader'].get('selector')!=selector or
+                (after_name,after_selector)!=(name,selector) or (ready_name,ready_selector)!=(name,selector) or
+                after_uid!=ready_uid or after_uid==uid or
+                ready['reader'].get('pod_uid')!=after['reader'].get('pod_uid') or
+                not after['reader'].get('pod_uid') or not before['reader'].get('pod_uid') or
+                after['reader'].get('pod_uid')==before['reader'].get('pod_uid')):
+            raise ValueError('UID lecteur ou pod de reprise invalide')
+        candidate=workload_candidate(before['reader'],'reader')
+        if any(workload_candidate(item['reader'],'reader')!=candidate for item in (ready,after)):
+            raise ValueError('candidat lecteur ou identité changés pendant reprise')
+        if workload_candidate(before['loader'],'destination-loader')!=workload_candidate(after['loader'],'destination-loader'):
+            raise ValueError('candidat chargeur ou identité changés pendant reprise')
+        paused_at,resumed_at=stamp(pause['observed_utc']),stamp(ready['observed_utc'])
+        if not stamp(before['observed_utc'])<=paused_at<resumed_at<=stamp(after['observed_utc']):
+            raise ValueError('chronologie reprise incohérente')
     proof=after.get('source_journal_positions')
     if not proof or proof.get('kind')!='ibmi-source-rowpos-reader':
         raise ValueError('oracle indépendant positions source absent')
@@ -317,8 +324,63 @@ def evaluate_resume(before,after,order,operations):
     retained=[row for row in after['history'] if row['EVENT_ID'] in before_ids]
     history_proof(retained,before['history'])
     return {'status':'PASS','resume_qualified':True,'rotation_qualified':False,'native_cdc_qualified':False,
-            'scope':'same_receiver_pause_mutations_resume','receiver':receiver,'checkpoint_before':low,'checkpoint_after':high,
+            'scope':'same_receiver_crash_mutations_recovery' if crash else 'same_receiver_pause_mutations_resume','receiver':receiver,'checkpoint_before':low,'checkpoint_after':high,
             'mutations':len(mutations),'events':len(expected),'history_exact':True,'source_mirror_exact':True}
+
+
+def evaluate_resume(before,after,order,operations):
+    return _evaluate_recovery(before,after,order,operations)
+
+
+def validate_crash_replacement(before,after,crash):
+    from .actions import reader_incarnation, validate_process_stamp
+    if (crash.get('kind')!='native-reader-crash-proof' or crash.get('process_termination_verified') is not True
+            or any(crash.get(k)!=before.get(k) for k in ('pipeline','table','table_id','namespace','context'))):
+        raise ValueError('preuve SIGKILL native absente')
+    request=crash.get('request',{});injection=crash.get('injection',{});old=before['reader'];new=crash.get('reader',{})
+    if (request.get('action')!='SIGKILL_reader_child' or request.get('environment')!='dev'
+            or request.get('attempts')!=1 or injection.get('attempts')!=1 or injection.get('armed') is not True
+            or not re.fullmatch(r'[0-9a-f]{32}',request.get('nonce','')) or injection.get('nonce')!=request['nonce']
+            or type(injection.get('exec_exit_code')) is not int or injection.get('exec_exit_code') not in (0,137)
+            or any(request.get(k)!=before.get(k) for k in ('pipeline','table','table_id','namespace','context'))
+            or injection.get('process_stamp')!=request.get('process_stamp')
+            or reader_incarnation(request.get('old_reader',{}))!=reader_incarnation(old)):
+        raise ValueError('intention ou garde crash divergente')
+    validate_process_stamp(request.get('process_stamp'))
+    stable=('deployment','uid','pod','pod_uid','container','replicaset','replicaset_uid','node')
+    if (any(not old.get(k) or new.get(k)!=old[k] for k in stable)
+            or type(new.get('restart_count')) is not int or new['restart_count']!=old['restart_count']+1
+            or not new.get('container_id') or new['container_id']==old['container_id']
+            or new.get('desired_replicas')!=1 or new.get('ready_replicas')!=1
+            or reader_incarnation(new)!=reader_incarnation(after['reader'])):
+        raise ValueError('incarnation après crash non prouvée')
+    candidate=workload_candidate(old,'reader')
+    if (workload_candidate(new,'reader')!=candidate
+            or workload_candidate(before['loader'],'destination-loader')!=workload_candidate(after['loader'],'destination-loader')):
+        raise ValueError('candidat ou identité changé pendant crash')
+    terminal=crash.get('terminated',{});started=stamp(request['started_utc']);observed=stamp(crash['observed_utc'])
+    if (terminal.get('reason')=='OOMKilled' or terminal.get('containerID')!=old['container_id'] or
+            not (terminal.get('signal')==9 or terminal.get('exitCode')==137)
+            or not stamp(before['observed_utc'])<=started<=stamp(terminal['finishedAt'])<observed<=stamp(after['observed_utc'])):
+        raise ValueError('terminaison kubelet non liée à la tentative SIGKILL')
+    finished=stamp(terminal['finishedAt'])
+    # Le kubelet peut publier seulement la seconde : ne pas admettre un ACK
+    # qui pourrait précéder le signal dans cette même seconde.
+    lower=finished+timedelta(seconds=1) if '.' not in terminal['finishedAt'] else finished
+    running=stamp(new['running_started_utc'])
+    if not finished<=running<=observed:raise ValueError('chronologie redémarrage incohérente')
+    return max(started,lower),running
+
+
+def evaluate_crash(before,after,operations):
+    result=_evaluate_recovery(before,after,None,operations,crash=True)
+    return {**result,'resume_qualified':False,'crash_recovery_qualified':True,
+            'maximum_10s_qualified':False,'native_cdc_qualified':False,
+            'fault_target':'reader_python_child_only',
+            'mutation_window':'after_termination_before_restarted_container_start',
+            'loader_crash_qualified':False,'raw_checkpoint_crash_boundary_qualified':False,
+            'limitations':['single_reader_child_SIGKILL_same_pod_same_receiver',
+                           'receiver_rotation_not_observed','maximum_latency_not_qualified']}
 
 
 def utc():
@@ -346,6 +408,11 @@ def write_private(path, data):
     with os.fdopen(descriptor, "w") as out:
         json.dump(data, out, ensure_ascii=False, indent=2)
         out.write("\n")
+        out.flush()
+        os.fsync(out.fileno())
+    directory=os.open(path.parent,os.O_RDONLY)
+    try:os.fsync(directory)
+    finally:os.close(directory)
 
 
 def normalize(value, kind):
@@ -601,7 +668,12 @@ print(json.dumps({{'method':'google-compute-metadata','credential_type':'google.
         effective=self.verify_identity(identity)
         proof = {"deployment": name, "uid": deployment["metadata"]["uid"], "pod": pod["metadata"]["name"],
                  "selector": deployment['spec']['selector']['matchLabels'],
+                 "selected_pod_uids":[p["metadata"]["uid"] for p in pods],
                  "pod_uid": pod["metadata"]["uid"], "container": matching[0]["name"],
+                 "node":pod["spec"]["nodeName"],"replicaset":owner["name"],"replicaset_uid":owner["uid"],
+                 "container_id":selected[0].get("containerID"),"restart_count":selected[0].get("restartCount"),
+                 "last_terminated":selected[0].get("lastState",{}).get("terminated",{}),
+                 "running_started_utc":selected[0].get("state",{}).get("running",{}).get("startedAt"),
                  "images": [{"name": c["name"], "image_id": c["imageID"]} for c in statuses],
                  "service_account": sa_name, "identity_mode": self.args.identity,
                  "irsa_declared": bool(sa["metadata"].get("annotations", {}).get("eks.amazonaws.com/role-arn"))}
@@ -611,6 +683,29 @@ print(json.dumps({{'method':'google-compute-metadata','credential_type':'google.
         proof.update(desired_replicas=deployment['spec'].get('replicas',1),
                      ready_replicas=deployment.get('status',{}).get('readyReplicas',0))
         return proof, env
+
+    def crash_exec(self,pod,container,script):
+        remaining=min(35,self.deadline-time.monotonic())
+        if remaining<=0:raise RuntimeError('native_probe_deadline_exceeded')
+        run=subprocess.run(['kubectl','--kubeconfig',self.args.kubeconfig,'--context',self.args.context,
+                            '-n',self.args.namespace,'exec',pod,'-c',container,'-i','--','python','-'],
+                           input=script,capture_output=True,text=True,timeout=remaining,check=False)
+        # L'init ferme aussi la session exec : exit137 est attendu, jamais un motif de rejeu.
+        markers=[line[len('QDT_CRASH_ARMED '):] for line in run.stdout.splitlines() if line.startswith('QDT_CRASH_ARMED ')]
+        if len(markers)!=1:raise ValueError('marqueur injection absent ou ambigu')
+        event=json.loads(markers[0])
+        return {**event,'armed':True,'exec_exit_code':run.returncode}
+
+    def crash_state(self,before,request,injection):
+        reader,_=self.workload(self.args.reader_deployment,self.args.capture_digest)
+        terminal=reader.get('last_terminated',{})
+        crash={'kind':'native-reader-crash-proof','observed_utc':utc(),'reader':reader,'request':request,
+               'injection':injection,'terminated':terminal,'process_termination_verified':True,
+               'native_cdc_qualified':False,**{k:getattr(self.args,k) for k in ('pipeline','table','table_id','namespace','context')}}
+        # Ready seul ne suffit pas : même pod/owners, ancienne incarnation terminée, compteur+1.
+        after={**before,'reader':reader,'observed_utc':crash['observed_utc']}
+        validate_crash_replacement(before,after,crash)
+        return crash
 
     def reader_state(self,mode,before):
         if before.get('snapshot_checks_passed') is not True or any(before.get(k)!=getattr(self.args,k)

@@ -121,6 +121,33 @@ class PostgresComponentTests(unittest.TestCase):
         self.assertIn("name: publish", cronjob)
         self.assertIn("quadringent_postgres_backup.py", cronjob)
         self.assertIn("--dump-file", cronjob)
+        self.assertIn("--validation-file", cronjob)
+        self.assertIn("pg_restore --file=/dev/null /backup/postgres.dump", cronjob)
+        self.assertIn("sha256sum /backup/postgres.dump", cronjob)
+        self.assertIn('command: ["sh", "-ec"]', cronjob)
+        self.assertLess(cronjob.index("pg_restore --file=/dev/null"), cronjob.index("printf"))
+
+    def test_backup_network_policy_matches_exact_release_labels(self) -> None:
+        """L'accès PostgreSQL du backup reste lié au nom et à l'instance du site."""
+        import yaml
+        for enabled in (False, True):
+            with self.subTest(enabled=enabled):
+                result = render("postgres.enabled=true", "networkPolicy.enabled=true", "postgres.backup.enabled=" + str(enabled).lower())
+                self.assertEqual(result.returncode, 0, result.stderr)
+                documents = [item for item in yaml.safe_load_all(result.stdout) if item]
+                policy = next(item for item in documents if item["kind"] == "NetworkPolicy" and item["metadata"]["name"].endswith("postgres"))
+                selectors = [peer["podSelector"]["matchLabels"] for rule in policy["spec"]["ingress"] for peer in rule["from"]]
+                backups = [labels for labels in selectors if labels.get("app.kubernetes.io/component") == "postgres-backup"]
+                if not enabled:
+                    self.assertEqual(backups, [])
+                    self.assertEqual(len(selectors), 1)
+                    continue
+                self.assertEqual(backups, [{"app.kubernetes.io/name": "quadringent", "app.kubernetes.io/instance": "cdc", "app.kubernetes.io/component": "postgres-backup"}])
+                job = next(item for item in documents if item["kind"] == "CronJob" and item["metadata"]["name"].endswith("postgres-backup"))
+                labels = job["spec"]["jobTemplate"]["spec"]["template"]["metadata"]["labels"]
+                for key, value in backups[0].items():
+                    self.assertEqual(labels[key], value)
+                self.assertEqual(policy["spec"]["ingress"][0]["ports"], [{"port": 5432, "protocol": "TCP"}])
 
     def test_invalid_image_digest_is_refused(self) -> None:
         result = render("postgres.enabled=true", "postgres.image.digest=sha256:not-a-real-digest")

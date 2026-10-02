@@ -184,3 +184,64 @@ partielle, drift de release ou seuil dépassé produit un verdict incomplet.
 Aucune DML synthétique, migration, ressource cloud ou installation n'est créée
 par ce CLI. Les sondes nécessitent les outils locaux `kubectl` et, pour
 l'admission fraîche, `gh`, plus les capacités natives existantes des pods.
+
+## Crash abrupt du lecteur (DEV uniquement)
+
+Le scénario `crash` est distinct de `pause`/`resume`. Il exige une baseline
+native qualifiée, l'admission conservée de la release et cette activation
+opérateur explicite dans `actions` :
+
+```json
+{"enabled": true, "environment": "dev", "crash_reader": true}
+```
+
+Cette restriction locale n'est pas une attestation serveur de l'environnement.
+Le kubeconfig doit déjà autoriser la lecture du pod, de son Deployment,
+ReplicaSet et nœud, puis `pods/exec` sur le conteneur lecteur exact. La commande
+n'ajoute aucun droit. Elle n'efface aucun pod et ne change aucune réplication.
+
+L'image capture doit démarrer le lecteur comme enfant direct de
+`/usr/bin/tini -g --`; aucun override du processus principal n'est accepté.
+Le collecteur contrôle l'exécutable, les arguments attendus, le propriétaire,
+le namespace PID, le démarrage du processus et d'init ainsi que l'identifiant
+de démarrage du noyau. Ces gardes minimales sont conservées sans dump de
+cmdline ou d'environnement. Il persiste `crash.action-request.json` avant
+mutation, relit le même Pod UID et containerID et exige un unique pod
+sélectionné, y compris les pods non prêts ou en terminaison, puis ouvre un pidfd et revalide
+l'incarnation avant **un seul SIGKILL de l'enfant Python**. Un noyau sans pidfd,
+une course, un timeout ou une intention impossible à écrire arrêtent le
+scénario sans repli sur un simple PID ni répétition automatique.
+
+```sh
+quadringent qualification native --config /chemin/prive/site.json \
+  --out-dir /chemin/prive/crash-preuves --phase crash
+```
+
+La phase attend au plus `max_seconds` (plafond 120 s) le redémarrage du même
+pod sous le même Deployment/ReplicaSet, avec la même release et identité.
+Elle exige `restartCount + 1`, un nouveau containerID et le `lastState`
+kubelet lié à l'ancien containerID : signal 9 ou code 137, horodatage après
+l'intention, motif différent de `OOMKilled`. Le marqueur préparatoire seul
+et un pod Ready ne constituent jamais une preuve de crash ou de CDC.
+
+Pour qualifier la récupération des données, organiser une mutation source
+réellement acquittée pendant la fenêtre d'arrêt, puis recueillir l'oracle
+journal/ROWPOS indépendant et le snapshot après reprise. Ajouter
+`refs.crash_proof`, `refs.ack_receipts`, `refs.history_oracle`, `refs.before`
+et `refs.after` vers les preuves privées. `bind-crash-mutations` lie les ACK
+aux images source réelles ; référencer son résultat par
+`refs.mutation_receipts`, puis exécuter `evaluate-crash`. Aucune mutation
+source n'est produite par ces phases.
+
+Les ACK doivent commencer après la terminaison prouvée et finir avant
+le démarrage du nouveau conteneur (et non la simple observation Ready). Si le kubelet n'horodate qu'à la seconde, la borne basse
+est la seconde suivante : une fenêtre trop courte est donc incomplète. La panne
+du chargeur et un point de crash déterminé entre RAW et checkpoint ne sont
+pas couverts par ce scénario lecteur.
+L'évaluation contrôle la progression du checkpoint dans le même receiver,
+la couverture journal/ROWPOS, HISTORY exact sans doublon, la conservation
+des événements antérieurs et MIRROR réconcilié avec la source. Un résultat
+`crash_recovery_qualified=true` reste limité à ce scénario :
+`native_cdc_qualified=false`, aucune rotation de receiver ni latence maximale
+10 secondes n'est ainsi qualifiée. L'image modifiée doit être reconstruite,
+scannée et admise avant une exécution native réelle.

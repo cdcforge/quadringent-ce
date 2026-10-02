@@ -181,15 +181,21 @@ spec:
   policyTypes:
     - Ingress
   ingress:
-    # Seul le control plane (v1 et v2, même Pod, même label de composant)
-    # peut se connecter — aucun autre pod du namespace, du cluster ou du
-    # lecteur IBM i n'a besoin d'accéder à Postgres.
+    # Le control plane et, si activé, le backup de cette seule release.
+    # Les trois labels sont requis ; aucun sélecteur component seul.
     - from:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: {{ include "quadringent.name" . }}
               app.kubernetes.io/instance: {{ .Release.Name }}
               app.kubernetes.io/component: control-plane
+        {{- if .Values.postgres.backup.enabled }}
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ include "quadringent.name" . }}
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: postgres-backup
+        {{- end }}
       ports:
         - port: {{ .Values.postgres.port }}
           protocol: TCP
@@ -221,6 +227,8 @@ spec:
       template:
         metadata:
           labels:
+            app.kubernetes.io/name: {{ include "quadringent.name" . }}
+            app.kubernetes.io/instance: {{ .Release.Name }}
             app.kubernetes.io/component: postgres-backup
         spec:
           {{- with .Values.postgres.backup.serviceAccountName }}
@@ -245,7 +253,17 @@ spec:
             - name: pg-dump
               image: {{ .Values.postgres.image.repository }}@{{ .Values.postgres.image.digest }}
               imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
-              command: ["pg_dump", "--format=custom", "--no-owner", "--no-privileges", "--file", "/backup/postgres.dump"]
+              # set -e : aucune publication ni reçu si dump/décodage/hash échoue.
+              command: ["sh", "-ec"]
+              args:
+                - |
+                  umask 027
+                  pg_dump --format=custom --no-owner --no-privileges --file /backup/postgres.dump
+                  pg_restore --file=/dev/null /backup/postgres.dump
+                  digest=$(sha256sum /backup/postgres.dump)
+                  digest=${digest%% *}
+                  bytes=$(wc -c < /backup/postgres.dump)
+                  printf '{"schema":"quadringent.pg-backup-validation.v1","validator":"pg_restore-full-sql-decode","bytes":%s,"sha256":"%s"}\n' "$bytes" "$digest" > /backup/postgres.validation.json
               env:
                 - name: PGHOST
                   value: {{ $name | quote }}
@@ -277,7 +295,7 @@ spec:
               # embarque scripts/quadringent_postgres_backup.py.
               image: {{ .Values.controlPlane.image.repository }}@{{ .Values.controlPlane.image.digest }}
               imagePullPolicy: {{ .Values.controlPlane.image.pullPolicy }}
-              command: ["python", "/app/quadringent_postgres_backup.py", "--dump-file", "/backup/postgres.dump"]
+              command: ["python", "/app/quadringent_postgres_backup.py", "--dump-file", "/backup/postgres.dump", "--validation-file", "/backup/postgres.validation.json"]
               envFrom:
                 - configMapRef:
                     name: {{ include "quadringent.fullname" . }}-tuning
