@@ -9,7 +9,7 @@ référence pour un site qui gère lui-même sa chart Helm.
 Pour les sauvegardes PostgreSQL, la restauration isolée et le retour de version,
 voir [Sauvegarder, restaurer et revenir à une version précédente](backup-restore.md).
 
-**Statut de la version 0.2.4** : candidat DEV en préparation. Les preuves
+**Statut de la version 0.2.5** : candidat DEV en préparation. Les preuves
 sur des versions précédentes couvrent des installations du control plane sur
 GKE, EKS, VM AWS et VM GCP ; elles ne constituent pas une qualification du
 nouveau lot. L'installation, la sauvegarde/restauration et le retour de
@@ -34,12 +34,12 @@ installation. Aucun checkout Git n'est requis.
 
 ```sh
 python3 -m venv /chemin/prive/quadringent-venv
-/chemin/prive/quadringent-venv/bin/python -m pip install quadringent-0.2.4-py3-none-any.whl
-tar -xzf quadringent-0.2.4.tar.gz -C /chemin/prive
+/chemin/prive/quadringent-venv/bin/python -m pip install quadringent-0.2.5-py3-none-any.whl
+tar -xzf quadringent-0.2.5.tar.gz -C /chemin/prive
 /chemin/prive/quadringent-venv/bin/quadringent install \
   --cloud gcp --target cluster --region europe-west1 --project mon-projet \
   --name mon-site --release-manifest /chemin/prive/release-manifest.json \
-  --assets-dir /chemin/prive/quadringent-0.2.4 --dry-run
+  --assets-dir /chemin/prive/quadringent-0.2.5 --dry-run
 ```
 
 Retirer `--dry-run` après examen du plan, avec les identifiants cloud et

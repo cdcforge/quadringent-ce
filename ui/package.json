@@ -1,7 +1,7 @@
 {
   "name": "quadringent-console",
   "private": true,
-  "version": "0.2.4",
+  "version": "0.2.5",
   "type": "module",
   "engines": {
     "node": "^24.0.0 || ^26.0.0"

@@ -11,7 +11,17 @@ site) ne rend plus aucune ressource Postgres.
 from __future__ import annotations
 
 import subprocess
+import shutil
 import unittest
+import json
+import tempfile
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+import yaml
+
+REPOSITORY = Path(__file__).resolve().parents[1]
 
 VALUES = "infra-values/values-int.yaml"
 NAMESPACE = "quadringent-demo"
@@ -27,7 +37,7 @@ def render(*values: str) -> subprocess.CompletedProcess[str]:
     command = ["helm", "template", "cdc", "chart", "--namespace", NAMESPACE, "-f", VALUES, *LAUNCH_FILES]
     for value in values:
         command += ["--set", value]
-    return subprocess.run(command, capture_output=True, text=True)
+    return subprocess.run(command, capture_output=True, text=True, cwd=REPOSITORY)
 
 
 class PostgresComponentTests(unittest.TestCase):
@@ -156,6 +166,126 @@ class PostgresComponentTests(unittest.TestCase):
         # digests d'image de la chart) avant même d'atteindre la garde du
         # template — même contrat que image.digest/controlPlane.image.digest.
         self.assertIn("does not match pattern", result.stderr)
+
+
+class PostgresClaimUpgradeTests(unittest.TestCase):
+    """Le vrai lookup Helm lit une API locale, sans cluster ni credentials."""
+
+    def render_existing(self, existing: dict | None, chart: str = "chart", forbidden: bool = False, expected_error: str | None = None) -> tuple[dict, list[str]]:
+        paths: list[str] = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *_args: object) -> None:
+                pass
+
+            def do_GET(self) -> None:
+                path = self.path.split("?", 1)[0]
+                paths.append(path)
+                payload: dict = {}
+                code = 200
+                if path == "/version":
+                    payload = {"gitVersion": "v1.31.0", "major": "1", "minor": "31"}
+                elif path == "/api":
+                    payload = {"kind": "APIVersions", "versions": ["v1"]}
+                elif path == "/apis":
+                    payload = {"kind": "APIGroupList", "groups": [{"name": "apps", "versions": [{"groupVersion": "apps/v1", "version": "v1"}], "preferredVersion": {"groupVersion": "apps/v1", "version": "v1"}}]}
+                elif path in {"/api/v1", "/apis/apps/v1"}:
+                    resources = [("secrets", "Secret"), ("configmaps", "ConfigMap"), ("services", "Service"), ("serviceaccounts", "ServiceAccount")] if path == "/api/v1" else [("statefulsets", "StatefulSet"), ("deployments", "Deployment")]
+                    payload = {"kind": "APIResourceList", "groupVersion": "v1" if path == "/api/v1" else "apps/v1", "resources": [{"name": name, "kind": kind, "namespaced": True, "verbs": ["get", "list"]} for name, kind in resources]}
+                elif path.endswith("/statefulsets/cdc-quadringent-postgres") and forbidden:
+                    code = 403
+                    payload = {"kind": "Status", "apiVersion": "v1", "status": "Failure", "reason": "Forbidden", "message": "lookup forbidden", "code": 403}
+                elif path.endswith("/statefulsets/cdc-quadringent-postgres") and existing is not None:
+                    payload = existing
+                else:
+                    code = 404
+                    payload = {"kind": "Status", "apiVersion": "v1", "status": "Failure", "reason": "NotFound", "code": 404}
+                raw = json.dumps(payload).encode()
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(raw)
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                config = Path(directory)/"kubeconfig"
+                config.write_text(yaml.safe_dump({"apiVersion": "v1", "kind": "Config", "clusters": [{"name": "local", "cluster": {"server": f"http://127.0.0.1:{server.server_port}"}}], "contexts": [{"name": "local", "context": {"cluster": "local", "user": "local"}}], "current-context": "local", "users": [{"name": "local", "user": {}}]}))
+                config.chmod(0o600)
+                command = ["helm", "template", "cdc", chart, "--namespace", NAMESPACE, "-f", VALUES, *LAUNCH_FILES, "--set", "postgres.enabled=true", "--set", "observability.enabled=false,fleetObserve.enabled=false", "--dry-run=server", "--disable-openapi-validation", "--kubeconfig", str(config)]
+                result = subprocess.run(command, capture_output=True, text=True, timeout=30, cwd=REPOSITORY)
+                if expected_error is not None:
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(expected_error, result.stderr)
+                    return {}, paths
+                self.assertEqual(result.returncode, 0, result.stderr)
+                document = next(row for row in yaml.safe_load_all(result.stdout) if row and row["kind"] == "StatefulSet")
+                return document, paths
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
+    def test_existing_023_claim_labels_survive_upgrade_and_rollback(self) -> None:
+        """03→05 conserve le template03 exact et le rendu rollback03 identique."""
+        with tempfile.TemporaryDirectory() as directory:
+            legacy = Path(directory)/"legacy"
+            candidate = Path(directory)/"candidate"
+            for chart in (legacy, candidate):
+                shutil.copytree(REPOSITORY/"chart", chart)
+            # Contrat historique03/04 : les labels généraux étaient utilisés dans
+            # le template PVC. Fixture autonome, indépendante de Git/checkout shallow.
+            original = (legacy/"templates"/"postgres.yaml").read_text()
+            start = original.index("{{- /* Le template PVC est immutable.")
+            end = original.index("{{- /* Génération une fois", start)
+            original = original[:start] + original[end:]
+            original = original.replace("        {{- toYaml $claimMetadata | nindent 8 }}", "        name: data\n        labels:\n          {{- include \"quadringent.labels\" . | nindent 10 }}\n          app.kubernetes.io/component: postgres")
+            (legacy/"templates"/"postgres.yaml").write_text(original)
+            for chart, version in ((legacy, "0.2.3"), (candidate, "0.2.5")):
+                metadata = yaml.safe_load((chart/"Chart.yaml").read_text())
+                metadata["version"] = metadata["appVersion"] = version
+                (chart/"Chart.yaml").write_text(yaml.safe_dump(metadata))
+            baseline, _ = self.render_existing(None, str(legacy))
+            baseline["metadata"]["uid"] = "existing-statefulset-uid"
+            baseline["metadata"]["annotations"] = {"meta.helm.sh/release-name": "cdc", "meta.helm.sh/release-namespace": NAMESPACE}
+            upgraded, paths = self.render_existing(baseline, str(candidate))
+            # Helm ajoute ces annotations aux ressources appliquées, pas au template.
+            upgraded["metadata"]["annotations"] = baseline["metadata"]["annotations"]
+            rollback, _ = self.render_existing(upgraded, str(legacy))
+            self.assertIn("/apis/apps/v1/namespaces/" + NAMESPACE + "/statefulsets/cdc-quadringent-postgres", paths)
+            for document in (upgraded, rollback):
+                self.assertEqual(document["spec"]["volumeClaimTemplates"], baseline["spec"]["volumeClaimTemplates"])
+                self.assertEqual(document["metadata"]["name"], baseline["metadata"]["name"])
+                self.assertEqual(document["spec"]["selector"], baseline["spec"]["selector"])
+            self.assertEqual(upgraded["spec"]["template"]["metadata"]["labels"]["app.kubernetes.io/version"], "0.2.5")
+            self.assertEqual(rollback["spec"]["template"]["metadata"]["labels"]["app.kubernetes.io/version"], "0.2.3")
+
+    def test_existing_024_annotations_and_labels_are_preserved(self) -> None:
+        rendered, _ = self.render_existing(None)
+        rendered["metadata"]["annotations"] = {"meta.helm.sh/release-name": "cdc", "meta.helm.sh/release-namespace": NAMESPACE}
+        metadata = rendered["spec"]["volumeClaimTemplates"][0]["metadata"]
+        metadata["labels"]["app.kubernetes.io/version"] = "0.2.4"
+        metadata["annotations"] = {"example.org/retained": "original"}
+        upgraded, _ = self.render_existing(rendered)
+        self.assertEqual(upgraded["spec"]["volumeClaimTemplates"], rendered["spec"]["volumeClaimTemplates"])
+
+    def test_statefulset_lookup_forbidden_refuses_upgrade(self) -> None:
+        """Une permission manquante ne devient pas une nouvelle installation."""
+        self.render_existing(None, forbidden=True, expected_error="lookup forbidden")
+
+    def test_unexpected_existing_claim_refuses_upgrade(self) -> None:
+        existing, _ = self.render_existing(None)
+        existing["spec"]["volumeClaimTemplates"][0]["metadata"]["name"] = "other"
+        self.render_existing(existing, expected_error="template PVC data unique obligatoire")
+
+    def test_new_claim_labels_are_independent_of_app_version(self) -> None:
+        rendered, _ = self.render_existing(None)
+        labels = rendered["spec"]["volumeClaimTemplates"][0]["metadata"]["labels"]
+        self.assertNotIn("app.kubernetes.io/version", labels)
+        self.assertEqual(labels["app.kubernetes.io/instance"], "cdc")
+        self.assertEqual(labels["app.kubernetes.io/component"], "postgres")
 
 
 if __name__ == "__main__":

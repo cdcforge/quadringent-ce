@@ -23,6 +23,20 @@
 {{- end }}
 {{- $name := include "quadringent.postgresServiceName" . }}
 {{- $secretName := include "quadringent.postgresSecretName" . }}
+{{- /* Le template PVC est immutable. Conserver ses métadonnées d'origine,
+  notamment le label version des releases 0.2.3/0.2.4, permet leur rollback.
+  Les nouvelles installations utilisent seulement des labels stables.
+  lookup doit lire le StatefulSet réel lors d'un upgrade ; un refus API échoue.
+*/ -}}
+{{- $claimMetadata := dict "name" "data" "labels" (dict "app.kubernetes.io/name" (include "quadringent.name" .) "app.kubernetes.io/instance" .Release.Name "app.kubernetes.io/managed-by" .Release.Service "app.kubernetes.io/component" "postgres") }}
+{{- $existingStatefulSet := lookup "apps/v1" "StatefulSet" .Release.Namespace $name }}
+{{- if $existingStatefulSet }}
+{{- $claims := $existingStatefulSet.spec.volumeClaimTemplates }}
+{{- if or (ne (len $claims) 1) (ne (index $claims 0).metadata.name "data") }}
+{{- fail "StatefulSet Postgres existant : template PVC data unique obligatoire" }}
+{{- end }}
+{{- $claimMetadata = (index $claims 0).metadata }}
+{{- end }}
 {{- /* Génération une fois, conservée ensuite : `lookup` interroge le cluster
   réel (toujours {} hors ligne — `helm template`/tests unitaires empruntent
   donc systématiquement la branche « génère » ; seul un `helm install`/
@@ -151,10 +165,7 @@ spec:
               drop: ["ALL"]
   volumeClaimTemplates:
     - metadata:
-        name: data
-        labels:
-          {{- include "quadringent.labels" . | nindent 10 }}
-          app.kubernetes.io/component: postgres
+        {{- toYaml $claimMetadata | nindent 8 }}
       spec:
         accessModes: ["ReadWriteOnce"]
         {{- if .Values.postgres.storage.storageClassName }}

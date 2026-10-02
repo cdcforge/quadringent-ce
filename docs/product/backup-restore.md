@@ -143,11 +143,25 @@ Archiver la chart précédente et les valeurs relues ; les valeurs doivent
 épingler `image.digest`, `controlPlane.image.digest` et `verifier.imageDigest`
 aux digests admis de la même release. Un tag mutable n'est pas un pin.
 
+À partir de 0.2.5, la chart relit le StatefulSet PostgreSQL existant et conserve
+les métadonnées de son template PVC immutable. L'identité Kubernetes utilisée
+par Helm doit pouvoir lire ce StatefulSet ; une lecture refusée bloque le rendu.
+Les labels des nouvelles claims sont indépendants de la version du produit.
+Ne pas utiliser `--force`, supprimer le StatefulSet ou recréer le PVC pour
+contourner un refus de mise à jour. La préversion 0.2.4 changeait un label du
+template PVC et ne convient pas au parcours de mise à jour depuis 0.2.3.
+
+Le contrat de rendu 0.2.3 → 0.2.5 → 0.2.3 conserve le template PVC initial.
+La conservation des UID et des données sur Kubernetes est encore à vérifier
+pour ce candidat ; ce contrat ne qualifie pas un retour d'une installation
+neuve 0.2.5 vers 0.2.3. Un rendu hors ligne (`helm template`) ne lit pas l'état
+du cluster et ne peut attester la conservation des métadonnées existantes.
+
 Après vérification des checksums de l'archive chart candidate et des références
 images, depuis le contexte Kubernetes explicite et autorisé :
 
 ```sh
-helm upgrade --install '<release>' /chemin/prive/quadringent-0.2.4.tgz \
+helm upgrade --install '<release>' /chemin/prive/quadringent-0.2.5.tgz \
   --kube-context '<contexte-autorisé>' --namespace '<namespace>' \
   --values /chemin/prive/site-candidate-pinned.yaml --wait --timeout 5m
 ```
