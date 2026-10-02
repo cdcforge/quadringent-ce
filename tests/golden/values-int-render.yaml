@@ -12,7 +12,7 @@ metadata:
     app.kubernetes.io/name: quadringent
     app.kubernetes.io/instance: cdc
     app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/version: "0.2.4"
+    app.kubernetes.io/version: "0.2.5"
     app.kubernetes.io/component: control-plane
 automountServiceAccountToken: false
 ---
@@ -28,7 +28,7 @@ metadata:
     app.kubernetes.io/name: quadringent
     app.kubernetes.io/instance: cdc
     app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/version: "0.2.4"
+    app.kubernetes.io/version: "0.2.5"
 data:
   QUADRINGENT_ENVIRONMENT: "dev"
   QUADRINGENT_COST_NAMESPACE: "quadringent-demo"
@@ -71,7 +71,7 @@ metadata:
     app.kubernetes.io/name: quadringent
     app.kubernetes.io/instance: cdc
     app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/version: "0.2.4"
+    app.kubernetes.io/version: "0.2.5"
 data:
   # IBM i — aucun secret ici, le mot de passe passe par secretKeyRef
   ISERIES_HOST: "192.0.2.10"
@@ -127,7 +127,7 @@ metadata:
     app.kubernetes.io/name: quadringent
     app.kubernetes.io/instance: cdc
     app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/version: "0.2.4"
+    app.kubernetes.io/version: "0.2.5"
 data:
   policy.json: "{\"capture_freshness_seconds\":120,\"checkpoint_lag_sequences\":1000,\"delivery_latency_p95_seconds\":60,\"delivery_latency_p99_seconds\":180,\"destination_freshness_seconds\":300,\"observability_freshness_seconds\":900,\"s3_freshness_seconds\":180,\"s3_requests_24h\":500000,\"snowflake_credits_24h\":1,\"snowpipe_pending_files\":10}"
 ---
@@ -143,7 +143,7 @@ metadata:
     app.kubernetes.io/name: quadringent
     app.kubernetes.io/instance: cdc
     app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/version: "0.2.4"
+    app.kubernetes.io/version: "0.2.5"
     app.kubernetes.io/component: control-plane
 spec:
   replicas: 1
@@ -158,7 +158,7 @@ spec:
         app.kubernetes.io/name: quadringent
         app.kubernetes.io/instance: cdc
         app.kubernetes.io/managed-by: Helm
-        app.kubernetes.io/version: "0.2.4"
+        app.kubernetes.io/version: "0.2.5"
         app.kubernetes.io/component: control-plane
     spec:
       serviceAccountName: cdcforge-control-plane
@@ -201,7 +201,7 @@ spec:
             - name: AWS_DEFAULT_REGION
               value: "eu-west-3"
             - name: QUADRINGENT_VERSION
-              value: "0.2.4"
+              value: "0.2.5"
           readinessProbe:
             exec:
               command:
@@ -252,7 +252,7 @@ metadata:
     app.kubernetes.io/name: quadringent
     app.kubernetes.io/instance: cdc
     app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/version: "0.2.4"
+    app.kubernetes.io/version: "0.2.5"
 spec:
   replicas: 0
   strategy:
@@ -267,7 +267,7 @@ spec:
         app.kubernetes.io/name: quadringent
         app.kubernetes.io/instance: cdc
         app.kubernetes.io/managed-by: Helm
-        app.kubernetes.io/version: "0.2.4"
+        app.kubernetes.io/version: "0.2.5"
     spec:
       serviceAccountName: as400-snowflake-capture
       imagePullSecrets:
@@ -445,7 +445,7 @@ metadata:
     app.kubernetes.io/name: quadringent
     app.kubernetes.io/instance: cdc
     app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/version: "0.2.4"
+    app.kubernetes.io/version: "0.2.5"
 spec:
   schedule: "*/4 * * * *"
   timeZone: Etc/UTC
@@ -545,7 +545,7 @@ metadata:
     app.kubernetes.io/name: quadringent
     app.kubernetes.io/instance: cdc
     app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/version: "0.2.4"
+    app.kubernetes.io/version: "0.2.5"
 spec:
   schedule: "*/15 * * * *"
   timeZone: Etc/UTC
