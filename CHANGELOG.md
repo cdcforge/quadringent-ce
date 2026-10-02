@@ -5,7 +5,18 @@ Voir la [politique de livraison](docs/releasing.md).
 
 ## [Unreleased]
 
-Réservé aux changements postérieurs à la préversion 0.2.3.
+Réservé aux changements postérieurs à la préversion 0.2.4.
+
+## [0.2.4] — préversion DEV en préparation
+
+### Sécurité et installation
+
+- Les exemples de comptes Snowflake et les descriptions de tests utilisent
+  des identifiants synthétiques, sans référence à un environnement réel.
+- L'émission d'un jeton d'agent vérifie le chemin Python sûr depuis un
+  répertoire contenant le shim du control plane, avec authentification et audit.
+- Le guide EKS précise les prérequis de stockage persistant, les vérifications
+  du pilote EBS CSI et le partage de propriété de son compte de service.
 
 ## [0.2.3] — préversion DEV en préparation
 

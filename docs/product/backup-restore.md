@@ -147,7 +147,7 @@ Après vérification des checksums de l'archive chart candidate et des référen
 images, depuis le contexte Kubernetes explicite et autorisé :
 
 ```sh
-helm upgrade --install '<release>' /chemin/prive/quadringent-0.2.3.tgz \
+helm upgrade --install '<release>' /chemin/prive/quadringent-0.2.4.tgz \
   --kube-context '<contexte-autorisé>' --namespace '<namespace>' \
   --values /chemin/prive/site-candidate-pinned.yaml --wait --timeout 5m
 ```

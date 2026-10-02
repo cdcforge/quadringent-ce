@@ -33,7 +33,7 @@ faite **avant expiration**, sans prolongation implicite.
     "run_id": 123,
     "attempt": 1,
     "source_sha": "<commit exact de 40 caractères hexadécimaux>",
-    "tag": "v0.2.3",
+    "tag": "v0.2.4",
     "workflow_sha256": "<SHA256 du workflow release relu>",
     "artifact_id": 456,
     "artifact_zip": "/chemin/prive/oci-scan-receipt.zip",

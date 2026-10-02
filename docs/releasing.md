@@ -4,7 +4,7 @@ La seule version éditable est `project.version` de `pyproject.toml`.
 `python scripts/sync_version.py` dérive Chart version/appVersion, Java, UI et
 lockfile. `--check` est obligatoire en CI. L’API `/v1/version` lit les métadonnées
 installées ; les images lisent le même pyproject copié lors du build. Un tag
-doit correspondre exactement : `--check --release v0.2.3`.
+doit correspondre exactement : `--check --release v0.2.4`.
 
 ## Compatibilité
 

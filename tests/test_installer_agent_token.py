@@ -40,8 +40,18 @@ def test_generated_script_issues_a_token_the_service_accepts(tmp_path: Path) -> 
         "QUADRINGENT_V2_TOKEN_PEPPER": "pepper-test",
         "QUADRINGENT_SITE_ID": "qqual",
     }
+    # Même nom que le paquet installé : le shim local du conteneur ne doit
+    # pas masquer les services v2 lors d'une exécution depuis /app.
+    (tmp_path / "quadringent_control_plane.py").write_text("# Shim local de test.\n")
+    script = agent_token_script("agent-qualification", "admin", days=7)
+    unsafe = subprocess.run(
+        [sys.executable, "-c", script], cwd=tmp_path,
+        capture_output=True, text=True, env=env, timeout=60,
+    )
+    assert unsafe.returncode != 0
+    assert "'quadringent_control_plane' is not a package" in unsafe.stderr
     result = subprocess.run(
-        [sys.executable, "-P", "-c", agent_token_script("agent-qualification", "admin", days=7)],
+        [sys.executable, "-P", "-c", script], cwd=tmp_path,
         capture_output=True, text=True, env=env, timeout=60,
     )
     assert result.returncode == 0, result.stderr

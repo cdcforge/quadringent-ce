@@ -10,7 +10,7 @@ distingue ces états et conserve « Non mesuré » quand une preuve manque.
 
 ![Cockpit Quadringent — scénario synthétique, aucune mesure réelle](site/assets/cockpit.png)
 
-**Édition communautaire, version 0.2.3 — préversion DEV.** Le moteur, l’API
+**Édition communautaire, version 0.2.4 — préversion DEV.** Le moteur, l’API
 et le cockpit local sont open source sous [Apache-2.0](LICENSE), utilisables
 sans clé de licence ni limite commerciale de tables. L’exploitant assume les
 coûts de son infrastructure. Aucune qualification PROD n’est annoncée.

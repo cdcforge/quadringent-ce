@@ -50,18 +50,53 @@ installation. Aucun checkout Git n'est requis.
 
 ```sh
 python3 -m venv /chemin/prive/quadringent-venv
-/chemin/prive/quadringent-venv/bin/python -m pip install quadringent-0.2.3-py3-none-any.whl
-tar -xzf quadringent-0.2.3.tar.gz -C /chemin/prive
+/chemin/prive/quadringent-venv/bin/python -m pip install quadringent-0.2.4-py3-none-any.whl
+tar -xzf quadringent-0.2.4.tar.gz -C /chemin/prive
 /chemin/prive/quadringent-venv/bin/quadringent install \
   --cloud gcp --target cluster --region europe-west1 --project mon-projet \
   --name mon-site --release-manifest /chemin/prive/release-manifest.json \
-  --assets-dir /chemin/prive/quadringent-0.2.3 --dry-run
+  --assets-dir /chemin/prive/quadringent-0.2.4 --dry-run
 ```
 
 Retirer `--dry-run` après examen du plan, avec les identifiants cloud et
 `kubectl` pointant vers le cluster visé. Le CLI refuse l'installation si la
 chart ou les modules manquent. Quand on travaille directement dans le dépôt
 source, `--assets-dir` peut être omis.
+
+### Stockage d'un cluster existant
+
+Le mode `--target cluster` utilise un cluster déjà créé. Il configure
+l'identité Quadringent ; il n'installe pas le pilote de volumes du cluster.
+Avant l'installation, vérifier qu'une StorageClass peut provisionner les
+volumes persistants PostgreSQL. La chart utilise celle par défaut, sauf si
+`postgres.storage.storageClassName` désigne une autre classe dans les values
+du site.
+
+Sur EKS avec des volumes EBS, le pilote Amazon EBS CSI et ses permissions
+doivent être prêts. Ces commandes vérifient un cluster existant sans le
+modifier :
+
+```sh
+aws eks describe-addon --cluster-name mon-cluster \
+  --addon-name aws-ebs-csi-driver \
+  --query 'addon.{status:status,issues:health.issues}'
+kubectl get storageclass
+kubectl -n kube-system get deployment ebs-csi-controller
+kubectl -n kube-system get daemonset ebs-csi-node
+```
+
+Pour le pilote géré comme add-on EKS, attendre son état `ACTIVE`, vérifier
+les pods du contrôleur et du pilote sur les nœuds, puis vérifier que la
+classe de stockage EBS utilise le provisionneur `ebs.csi.aws.com`.
+Un add-on en `CREATE_FAILED` ou un PVC en `Pending` ne constitue pas une
+installation fonctionnelle.
+
+Si le compte de service du pilote est géré par l'add-on, créer uniquement
+son rôle IAM avec `eksctl create iamserviceaccount --role-only` ; créer aussi
+le compte Kubernetes avec eksctl peut provoquer un conflit de propriété
+avec l'add-on. Voir les guides AWS sur
+[le pilote EBS CSI](https://docs.aws.amazon.com/eks/latest/userguide/ebs-csi.html)
+et [les rôles des comptes de service](https://docs.aws.amazon.com/eks/latest/eksctl/iamserviceaccounts.html).
 
 ## 1. Ce que fait `quadringent install`
 
