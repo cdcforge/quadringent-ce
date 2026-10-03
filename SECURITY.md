@@ -37,9 +37,16 @@ relèvent du déploiement du site, pas d’une sécurité créée automatiquemen
 | Control plane → API Kubernetes | HTTPS du cluster | Jobs `create/get/patch` |
 | Jobs / résolution | DNS TCP/UDP 53 selon cluster | résolution des services |
 
-Aucune NetworkPolicy n’est livrée : DNS, endpoints privés, proxy et filtrage CNI
-dépendent du site. Ce n’est pas une preuve d’isolation réseau. Le propriétaire
-choisit et valide les règles d’entrée/sortie avant une exposition partagée.
+La chart livre des NetworkPolicies optionnelles, désactivées par défaut
+(`networkPolicy.enabled=false`). La politique générale sélectionne les pods
+de la release, limite les entrées au port du control plane quand celui-ci
+écoute hors loopback et autorise toutes les sorties. Avec PostgreSQL intégré,
+une politique supplémentaire limite ses entrées au control plane et, si la
+sauvegarde est activée, au pod de backup de la même release sur le port PostgreSQL.
+Ces règles nécessitent un CNI qui applique les NetworkPolicies ; elles ne
+prouvent pas une isolation réseau complète. DNS, endpoints privés, proxy et
+filtrage des sorties dépendent du site. Le propriétaire valide les règles
+avant une exposition partagée.
 La télémétrie est désactivée par défaut ; son opt-in et payload sont documentés
 [dans le guide dédié](docs/product/telemetry.md).
 
@@ -112,9 +119,9 @@ et une autorisation du propriétaire, avec preuve distincte pour chaque stockage
 
 ## Signalement et livraison privée
 
-Signaler une faille en privé au propriétaire du dépôt par le canal déjà convenu,
-ou via une alerte privée GitHub si celle-ci est activée. Ne pas ouvrir d’issue
-publique avec données ou secret. Aucune adresse de support ni délai de réponse
+Le signalement privé GitHub est activé pour ce dépôt :
+[signaler une vulnérabilité en privé](https://github.com/cdcforge/quadringent-ce/security/advisories/new).
+Ne pas ouvrir d’issue publique avec données ou secret. Aucun délai de réponse
 non établi n’est promis.
 
 L’historique d’origine n’est pas distribué : il contient une licence de site.

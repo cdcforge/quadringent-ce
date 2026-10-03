@@ -151,11 +151,26 @@ Ne pas utiliser `--force`, supprimer le StatefulSet ou recréer le PVC pour
 contourner un refus de mise à jour. La préversion 0.2.4 changeait un label du
 template PVC et ne convient pas au parcours de mise à jour depuis 0.2.3.
 
-Le contrat de rendu 0.2.3 → 0.2.5 → 0.2.3 conserve le template PVC initial.
-La conservation des UID et des données sur Kubernetes est encore à vérifier
-pour ce candidat ; ce contrat ne qualifie pas un retour d'une installation
-neuve 0.2.5 vers 0.2.3. Un rendu hors ligne (`helm template`) ne lit pas l'état
-du cluster et ne peut attester la conservation des métadonnées existantes.
+Le parcours 0.2.3 → 0.2.5 → 0.2.3 a été vérifié sur Kubernetes local Kind
+avec conservation du template PVC initial, des UID du StatefulSet/PVC et
+d’une donnée SQL sentinelle, sans recréation forcée.
+
+Les cycles du produit ont également été vérifiés en DEV sur GKE, EKS, VM GCP
+et VM AWS : après mise à jour et retour de version, le site initial a été
+entièrement supprimé. Un site neuf a été installé depuis les artefacts publics
+0.2.5, puis restauré depuis une sauvegarde 0.2.5 et les clés/configurations
+exportées hors site. Les contrôles portent sur la base réellement utilisée
+par le control plane, le login, la parité des données synthétiques et le
+déchiffrement ; ils ne se limitent pas à une seconde base isolée.
+
+Les UID du StatefulSet/PVC ont été relus pour GKE, EKS et VM GCP ; cette mesure
+n’a pas été effectuée directement sur VM AWS. La sélection des images
+enfants/configs reste dérivée des artefacts scellés en l’absence de lecture
+runtime directe. La CDC du lot, la stabilité PROD et le retour d’une
+installation neuve 0.2.5 vers 0.2.3 ne sont pas qualifiés. Ces résultats ne
+remplacent pas une vérification de compatibilité pour d’autres migrations.
+Un rendu hors ligne (`helm template`) ne lit pas l’état du cluster et ne peut
+attester la conservation des métadonnées existantes.
 
 Après vérification des checksums de l'archive chart candidate et des références
 images, depuis le contexte Kubernetes explicite et autorisé :

@@ -9,26 +9,30 @@ référence pour un site qui gère lui-même sa chart Helm.
 Pour les sauvegardes PostgreSQL, la restauration isolée et le retour de version,
 voir [Sauvegarder, restaurer et revenir à une version précédente](backup-restore.md).
 
-**Statut de la version 0.2.5** : candidat DEV en préparation. Les preuves
-sur des versions précédentes couvrent des installations du control plane sur
-GKE, EKS, VM AWS et VM GCP ; elles ne constituent pas une qualification du
-nouveau lot. L'installation, la sauvegarde/restauration et le retour de
-version doivent être vérifiés avec les artefacts exacts de la release sur
-chaque cible annoncée.
+**Statut de la version 0.2.5** : préversion DEV publique. Le lot exact a été
+vérifié sur GKE, EKS, VM AWS et VM GCP : installation, cycle
+0.2.3 → 0.2.5 → 0.2.3, sauvegarde avec exports des clés hors site, disparition
+complète du site initial, puis reconstruction neuve depuis les artefacts
+publics 0.2.5 et restauration sur la base servie par le control plane.
+Le login, la parité des données synthétiques et le déchiffrement ont été relus.
+Ces essais bornés ne garantissent pas toute combinaison de versions ou de
+configuration. Les UID PostgreSQL/PVC de VM AWS n’ont pas été directement
+mesurés ; la sélection des images enfants/configs reste inférée du manifeste
+scellé lorsqu’elle n’a pas été relue directement dans le runtime.
 
 La qualification du control plane est distincte de celle du parcours IBM i →
 Snowflake. Un pod prêt, une API accessible ou une capture active ne prouvent
 pas la relecture du miroir ni la continuité CDC. Aucun maximum de latence de
-10 s ni qualification PROD n'est annoncé pour ce candidat. Les essais
+10 s ni qualification PROD n'est annoncé pour cette préversion. Les essais
 utilisent des données synthétiques et les ressources temporaires sont
 supprimées après qualification.
 
 ### Installation depuis les artefacts de release
 
-Télécharger depuis **la même release** le wheel, le sdist
-`quadringent-<version>.tar.gz` et `release-manifest.json`. Le wheel installe le
-CLI ; le sdist contient la chart Helm et les modules Terraform nécessaires à
-`install`. Les trois images référencées par le manifeste sont publiées
+Télécharger le wheel, le sdist et le manifeste depuis
+[la même préversion publique 0.2.5](https://github.com/cdcforge/quadringent-ce/releases/tag/v0.2.5).
+Le wheel installe le CLI ; le sdist `quadringent-<version>.tar.gz` contient
+la chart Helm et les modules Terraform nécessaires à `install`. Les trois images référencées par le manifeste sont publiées
 séparément, par digest immuable. Vérifier les empreintes de la release avant
 installation. Aucun checkout Git n'est requis.
 
@@ -190,8 +194,8 @@ quadringent status --name demo-int
 quadringent uninstall --name demo-int
 ```
 
-Après une release, télécharger `release-manifest.json` joint à la release
-brouillon validée, puis le passer à `--release-manifest`. Ce fichier contient
+Télécharger `release-manifest.json` joint à la release publique choisie,
+puis le passer à `--release-manifest`. Ce fichier contient
 les trois digests publiés et le dépôt OCI. La release communautaire cible
 `ghcr.io/<owner>/quadringent-ce-runtime` ; utiliser l’URL exacte du
 manifeste. `--image-repository` permet de

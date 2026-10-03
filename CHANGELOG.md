@@ -7,16 +7,22 @@ Voir la [politique de livraison](docs/releasing.md).
 
 Réservé aux changements postérieurs au candidat 0.2.5.
 
-## [0.2.5] — candidat DEV en préparation
+## [0.2.5] — préversion DEV
 
 ### Installation et conservation des données
 
 - La chart conserve les métadonnées du template PVC PostgreSQL existant,
   notamment son ancien label de version, lors des mises à jour. Les nouvelles
   installations utilisent des labels de claim indépendants de la version.
-- Le rendu Helm avec lecture du StatefulSet vérifie le contrat
-  0.2.3 → 0.2.5 → 0.2.3. La conservation réelle des UID du StatefulSet/PVC et
-  des données reste à vérifier sur Kubernetes avant livraison de ce candidat.
+- Le parcours réel 0.2.3 → 0.2.5 → 0.2.3 conserve les UID du StatefulSet/PVC
+  et une donnée SQL sentinelle sur Kubernetes local Kind, sans recréation forcée.
+- Les cycles du produit sur GKE, EKS, VM GCP et VM AWS sont vérifiés en DEV :
+  mise à jour/retour de version, perte complète du site initial et reconstruction
+  neuve depuis les artefacts publics 0.2.5, avec restauration de la sauvegarde et
+  des clés exportées sur la base déployée, login, parité et déchiffrement.
+  Les UID PostgreSQL/PVC de VM AWS n’ont pas été directement mesurés. Les images
+  enfants/configs non relues dans le runtime restent inférées des artefacts
+  scellés. La CDC du lot et la stabilité PROD ne sont pas qualifiées.
 - La préversion 0.2.4 comporte un défaut connu : son label de version dans le
   template PVC immutable bloque la mise à jour depuis 0.2.3. Ses artefacts
   restent disponibles pour diagnostic ; utiliser la version corrigée après
