@@ -10,7 +10,7 @@ distingue ces états et conserve « Non mesuré » quand une preuve manque.
 
 ![Cockpit Quadringent — scénario synthétique, aucune mesure réelle](site/assets/cockpit.png)
 
-**Édition communautaire, version 0.2.4 — préversion DEV.** Le moteur, l’API
+**Édition communautaire, version 0.2.5 — préversion DEV.** Le moteur, l’API
 et le cockpit local sont open source sous [Apache-2.0](LICENSE), utilisables
 sans clé de licence ni limite commerciale de tables. L’exploitant assume les
 coûts de son infrastructure. Aucune qualification PROD n’est annoncée.
@@ -40,12 +40,23 @@ conserve les déclarations après un redémarrage.
 
 Pour connecter de vrais systèmes, suivre le [guide d’installation](docs/product/install-client.md).
 Il distingue prérequis, déclaration et preuve de réplication. Le parcours
-IBM i → GCS → Snowflake a été vérifié sur GKE DEV avec des tables
+IBM i → GCS → Snowflake a été vérifié lors d’un essai GKE DEV antérieur avec des tables
 synthétiques. EKS DEV, VM AWS DEV et VM GCP DEV ont été réellement installés,
 puis arrêtés ou supprimés après les essais ; la réplication IBM i → Snowflake
 n'y a pas encore été vérifiée sur EKS ou VM. Depuis l'acquittement IBM i, les délais
 observés jusqu'au miroir sur GKE varient de 6,35 à 31,31 s : aucun maximum
 de 10 s n'est annoncé.
+
+Le lot public 0.2.5 a été vérifié en DEV sur **GKE, EKS, VM GCP et VM AWS** :
+installation, mise à jour 0.2.3 → 0.2.5, retour à 0.2.3, puis disparition
+complète du site initial et reconstruction d’un site neuf avec les artefacts
+publics 0.2.5. La restauration de la sauvegarde 0.2.5 et des clés exportées
+hors site a été vérifiée sur la base utilisée par le control plane, avec login,
+parité des données synthétiques et déchiffrement. Cette preuve de cycle de vie
+ne qualifie pas la CDC du lot 0.2.5 ni une stabilité PROD. Les UID PostgreSQL/PVC
+n’ont pas été mesurés directement sur VM AWS ; les digests enfants/configs
+restent dérivés des artefacts scellés quand aucune lecture runtime directe
+n’a été effectuée.
 
 ## Périmètre
 
